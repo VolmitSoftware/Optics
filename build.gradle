@@ -4,7 +4,7 @@ plugins {
 }
 
 Properties opticsProperties = new Properties()
-file('../gradle.properties').withInputStream { InputStream stream -> opticsProperties.load(stream) }
+file('gradle.properties').withInputStream { InputStream stream -> opticsProperties.load(stream) }
 group = 'art.arcane'
 version = opticsProperties.getProperty('opticsVersion')
 
