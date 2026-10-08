@@ -115,12 +115,6 @@ final class LookTransferPoleTest {
         assertEquals(0.0D, LookTransfer.cameraUp(12.0F, 33.0F).dot(Angles.direction(12.0F, 33.0F)), 1.0E-12D);
     }
 
-    @Test
-    void horizontalYawFallsBackWhenTheFacingBecameVertical() {
-        assertEquals(Angles.yaw(1.0D, 1.0D), LookTransfer.horizontalYaw(new Vec3d(1.0D, 0.0D, 1.0D), 17.0F), 0.0F);
-        assertEquals(17.0F, LookTransfer.horizontalYaw(new Vec3d(1.0E-9D, 1.0D, 0.0D), 17.0F), 0.0F);
-    }
-
     private static List<Frame> verticalFrames() {
         List<Frame> frames = new ArrayList<Frame>(8);
         for (Frame frame : allFrames()) {

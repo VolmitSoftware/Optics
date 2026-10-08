@@ -41,10 +41,6 @@ public record LookTransfer(float yaw, float pitch, float roll) {
         return Angles.direction(yaw, pitch - 90.0F);
     }
 
-    public static float horizontalYaw(Vec3d mapped, float fallbackYaw) {
-        return horizontalYaw(mapped.x(), mapped.z(), fallbackYaw);
-    }
-
     public Look look() {
         return new Look(yaw, pitch);
     }
