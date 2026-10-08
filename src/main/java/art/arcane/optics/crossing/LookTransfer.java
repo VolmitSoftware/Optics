@@ -11,6 +11,9 @@ public record LookTransfer(float yaw, float pitch, float roll) {
     public static final double VERTICAL_EPSILON = 1.0E-6D;
     private static final float STRAIGHT_DOWN = 90.0F;
     private static final float STRAIGHT_UP = -90.0F;
+    private static final float HALF_TURN = 180.0F;
+    private static final float BRANCH_DEGREES = 90.0F;
+    private static final float POLE_BAND_DEGREES = 30.0F;
 
     public static LookTransfer of(Look look, AxisPermutation rotation) {
         double[] forward = new double[3];
@@ -48,6 +51,20 @@ public record LookTransfer(float yaw, float pitch, float roll) {
 
     public boolean hasRoll(double toleranceDegrees) {
         return Math.abs(roll) > toleranceDegrees;
+    }
+
+    public LookTransfer onBranchOf(LookTransfer reference) {
+        if (Math.abs(Angles.unwrap(roll - reference.roll, 0.0F)) <= BRANCH_DEGREES) {
+            return this;
+        }
+        if (nearPole()) {
+            return new LookTransfer(yaw + HALF_TURN, pitch < 0.0F ? STRAIGHT_UP : STRAIGHT_DOWN, Angles.unwrap(roll + HALF_TURN, 0.0F));
+        }
+        return reference.nearPole() ? reference : this;
+    }
+
+    private boolean nearPole() {
+        return Math.abs(pitch) >= STRAIGHT_DOWN - POLE_BAND_DEGREES;
     }
 
     private static LookTransfer resolve(double[] forward, double[] up, float fallbackYaw) {

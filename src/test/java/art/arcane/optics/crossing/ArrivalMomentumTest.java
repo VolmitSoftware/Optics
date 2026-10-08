@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.Test;
 
 import art.arcane.optics.frame.Frame;
+import art.arcane.optics.frame.Similarity;
 import art.arcane.optics.math.Face;
 import art.arcane.optics.math.Vec3d;
 
@@ -83,21 +84,22 @@ final class ArrivalMomentumTest {
     }
 
     @Test
-    void arrivalReplacesThePoseVelocityThroughTheRuleAndKeepsPositions() {
+    void arrivalMapsPositionsAndAppliesTheRuleToTheMappedVelocity() {
         Frame source = Frame.canonical(Face.N);
         PlaneCrossing crossing = new PlaneCrossing(source, new Vec3d(0.5D, 64.0D, 0.5D), new Vec3d(0.5D, 64.5D, 0.4D),
             new Vec3d(0.0D, 0.0D, -6.0D), new Vec3d(0.0D, 0.0D, -1.0D), true);
         Frame exit = Frame.canonical(Face.E);
         Pose before = new Pose(new Vec3d(0.5D, 64.5D, 0.4D), new Vec3d(0.5D, 64.5D, 6.4D), new Vec3d(0.5D, 64.5D, 6.4D),
             new Vec3d(0.0D, 0.0D, -6.0D), 180.0F, 0.0F, 180.0F, 0.0F, 180.0F, 180.0F, 180.0F, 180.0F);
-        Pose crossed = PoseTransform.apply(before, crossing.toward(exit, new Vec3d(100.5D, 70.0D, -3.5D)));
+        Similarity toward = crossing.toward(exit, new Vec3d(100.5D, 70.0D, -3.5D), 1.0D);
+        Pose crossed = PoseTransform.apply(before, toward);
         assertVector(crossing.outVelocity(exit), crossed.velocity());
-        Pose clamped = PoseTransform.arrive(crossed, crossing, exit, OrientationRule.FRAME, false, rule(MomentumRule.Mode.CLAMP), CONFIG_MAX);
+        Pose clamped = PoseTransform.arrive(before, crossing, toward, exit, OrientationRule.FRAME, false, rule(MomentumRule.Mode.CLAMP), CONFIG_MAX);
         assertVector(new Vec3d(4.0D, 0.0D, 0.0D), clamped.velocity());
         assertEquals(crossed.position(), clamped.position());
         assertEquals(crossed.previousPosition(), clamped.previousPosition());
         assertEquals(crossed.oldPosition(), clamped.oldPosition());
-        Pose preserved = PoseTransform.arrive(crossed, crossing, exit, OrientationRule.FRAME, false, null, CONFIG_MAX);
+        Pose preserved = PoseTransform.arrive(before, crossing, toward, exit, OrientationRule.FRAME, false, null, CONFIG_MAX);
         assertVector(crossed.velocity(), preserved.velocity());
     }
 

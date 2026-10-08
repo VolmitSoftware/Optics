@@ -36,7 +36,8 @@ final class ArrivalOrientationTransferTest {
         Pose source = new Pose(new Vec3d(10.5D, 64.1D, 20.5D), new Vec3d(10.5D, 64.5D, 20.5D), new Vec3d(10.5D, 64.9D, 20.5D),
             new Vec3d(0.0D, -0.4D, 0.0D), 30.0F, 90.0F, 30.0F, 90.0F, 30.0F, 30.0F, 30.0F, 30.0F);
         Pose crossed = PoseTransform.apply(source, crossing.toward(upwardExit, EXIT_ORIGIN));
-        Pose arrived = PoseTransform.arrive(crossed, crossing, upwardExit, OrientationRule.FRAME, false, null, 0.0D);
+        Pose arrived = PoseTransform.arrive(source, crossing, crossing.toward(upwardExit, EXIT_ORIGIN, 1.0D), upwardExit, OrientationRule.FRAME, false,
+            null, 0.0D);
         assertEquals(-90.0F, crossed.pitch(), 0.0F);
         assertEquals(-90.0F, arrived.pitch(), 0.0F);
         assertEquals(-90.0F, arrived.previousPitch(), 0.0F);
@@ -44,7 +45,7 @@ final class ArrivalOrientationTransferTest {
         assertEquals(arrived.yaw(), arrived.previousYaw(), 1.0E-3F);
         assertEquals(arrived.yaw(), arrived.headYaw(), 1.0E-3F);
         assertEquals(arrived.headYaw(), arrived.previousHeadYaw(), 1.0E-3F);
-        assertEquals(150.0F, Angles.unwrap(arrived.bodyYaw(), 150.0F), 1.0E-3F);
+        assertEquals(arrived.yaw(), arrived.bodyYaw(), 1.0E-3F);
         assertEquals(arrived.bodyYaw(), arrived.previousBodyYaw(), 1.0E-3F);
         assertEquals(0.0F, PoseTransform.arrivalRoll(source, crossing, upwardExit, OrientationRule.FRAME, false), 1.0E-3F);
     }

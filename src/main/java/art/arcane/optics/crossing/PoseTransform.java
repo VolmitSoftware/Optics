@@ -9,82 +9,76 @@ import art.arcane.optics.math.Angles.Look;
 import art.arcane.optics.math.Vec3d;
 
 public final class PoseTransform {
+    private static final float HALF_TURN = 180.0F;
+    private static final float QUARTER_TURN = 90.0F;
+
     private PoseTransform() {
     }
 
     public static Pose apply(Pose pose, OpticTransform transform) {
         return mapped(pose, transform.point(pose.position()), transform.point(pose.previousPosition()), transform.point(pose.oldPosition()),
-            transform.vector(pose.velocity()), transform.permutation());
+            transform.vector(pose.velocity()), new Rotation(transform.permutation()));
     }
 
     public static Pose apply(Pose pose, Similarity transform) {
         return mapped(pose, transform.point(pose.position()), transform.point(pose.previousPosition()), transform.point(pose.oldPosition()),
-            transform.vector(pose.velocity()), transform.rigid().permutation());
+            transform.vector(pose.velocity()), new Rotation(transform.rigid().permutation()));
     }
 
-    public static Pose arrive(Pose crossed, PlaneCrossing crossing, Frame exitFrame, OrientationRule orientation,
+    public static Pose arrive(Pose source, PlaneCrossing crossing, Similarity toward, Frame exitFrame, OrientationRule orientation,
                               boolean gravityFlip, MomentumRule momentum, double maxSpeed) {
-        Arrival arrival = new Arrival(AxisPermutation.between(exitFrame.view(crossing.frontSide()), crossing.frame()),
-            crossing, exitFrame, orientation, gravityFlip);
-        LookTransfer current = arrival.transfer(crossed.yaw(), crossed.pitch());
-        float yaw = Angles.unwrap(current.yaw(), crossed.yaw());
-        LookTransfer previous = arrival.transfer(crossed.previousYaw(), crossed.previousPitch());
-        float previousYaw = Angles.unwrap(previous.yaw(), yaw);
-        float bodyYaw = Angles.unwrap(LookTransfer.horizontalYaw(arrival.facing(crossed.bodyYaw()), yaw), yaw);
-        float previousBodyYaw = Angles.unwrap(LookTransfer.horizontalYaw(arrival.facing(crossed.previousBodyYaw()), previousYaw), bodyYaw);
-        float headYaw = Angles.unwrap(arrival.transfer(crossed.headYaw(), crossed.pitch()).yaw(), yaw);
-        float previousHeadYaw = Angles.unwrap(arrival.transfer(crossed.previousHeadYaw(), crossed.previousPitch()).yaw(), headYaw);
-        return new Pose(crossed.position(), crossed.previousPosition(), crossed.oldPosition(),
-            ArrivalMomentum.apply(crossed.velocity(), momentum, maxSpeed), yaw, current.pitch(), previousYaw, previous.pitch(),
-            bodyYaw, previousBodyYaw, headYaw, previousHeadYaw);
+        return mapped(source, toward.point(source.position()), toward.point(source.previousPosition()), toward.point(source.oldPosition()),
+            ArrivalMomentum.apply(toward.vector(source.velocity()), momentum, maxSpeed), new Arrival(crossing, exitFrame, orientation, gravityFlip));
     }
 
     public static float arrivalRoll(Pose source, PlaneCrossing crossing, Frame exitFrame, OrientationRule orientation, boolean gravityFlip) {
-        PlaneCrossing looking = new PlaneCrossing(crossing.frame(), crossing.origin(), crossing.point(), crossing.velocity(),
-            Angles.direction(source.yaw(), source.pitch()), crossing.frontSide());
-        return ArrivalOrientation.transfer(looking, LookTransfer.cameraUp(source.yaw(), source.pitch()), exitFrame, orientation, gravityFlip).roll();
+        return new Arrival(crossing, exitFrame, orientation, gravityFlip).transfer(source.yaw(), source.pitch()).roll();
     }
 
-    private static Pose mapped(Pose pose, Vec3d position, Vec3d previousPosition, Vec3d oldPosition, Vec3d velocity,
-                               AxisPermutation rotation) {
-        LookTransfer current = LookTransfer.of(new Look(pose.yaw(), pose.pitch()), rotation);
-        float yaw = Angles.unwrap(current.yaw(), pose.yaw());
-        LookTransfer previous = LookTransfer.of(new Look(pose.previousYaw(), pose.previousPitch()), rotation);
+    private static Pose mapped(Pose source, Vec3d position, Vec3d previousPosition, Vec3d oldPosition, Vec3d velocity, LookMap map) {
+        LookTransfer current = map.transfer(source.yaw(), source.pitch());
+        LookTransfer previous = map.transfer(source.previousYaw(), source.previousPitch()).onBranchOf(current);
+        LookTransfer head = map.transfer(source.headYaw(), source.pitch()).onBranchOf(current);
+        LookTransfer previousHead = map.transfer(source.previousHeadYaw(), source.previousPitch()).onBranchOf(previous);
+        float yaw = Angles.unwrap(current.yaw(), source.yaw());
         float previousYaw = Angles.unwrap(previous.yaw(), yaw);
-        float bodyYaw = Angles.unwrap(bodyYaw(pose.bodyYaw(), rotation, yaw), yaw);
-        float previousBodyYaw = Angles.unwrap(bodyYaw(pose.previousBodyYaw(), rotation, previousYaw), bodyYaw);
-        float headYaw = Angles.unwrap(LookTransfer.of(new Look(pose.headYaw(), pose.pitch()), rotation).yaw(), yaw);
-        float previousHeadYaw = Angles.unwrap(LookTransfer.of(new Look(pose.previousHeadYaw(), pose.previousPitch()), rotation).yaw(), headYaw);
-        return new Pose(position, previousPosition, oldPosition, velocity,
-            yaw, current.pitch(), previousYaw, previous.pitch(), bodyYaw, previousBodyYaw, headYaw, previousHeadYaw);
+        float headYaw = Angles.unwrap(head.yaw(), yaw);
+        float previousHeadYaw = Angles.unwrap(previousHead.yaw(), headYaw);
+        float bodyOffset = besideHead(Angles.unwrap(map.transfer(source.bodyYaw(), source.pitch()).yaw() - headYaw, 0.0F));
+        float previousBodyOffset = nearest(map.transfer(source.previousBodyYaw(), source.previousPitch()).yaw() - previousHeadYaw, bodyOffset);
+        float bodyYaw = headYaw + bodyOffset;
+        float previousBodyYaw = Angles.unwrap(previousHeadYaw + previousBodyOffset, bodyYaw);
+        return new Pose(position, previousPosition, oldPosition, velocity, yaw, current.pitch(), previousYaw, previous.pitch(),
+            bodyYaw, previousBodyYaw, headYaw, previousHeadYaw);
     }
 
-    private static float bodyYaw(float bodyYaw, AxisPermutation rotation, float fallbackYaw) {
-        double[] facing = new double[3];
-        Angles.directionInto(bodyYaw, 0.0F, facing);
-        rotation.vectorInto(facing[0], facing[1], facing[2], facing);
-        return LookTransfer.horizontalYaw(new Vec3d(facing[0], facing[1], facing[2]), fallbackYaw);
+    private static float besideHead(float offset) {
+        return Math.abs(offset) > QUARTER_TURN ? Angles.unwrap(offset + HALF_TURN, 0.0F) : offset;
     }
 
-    private record Arrival(AxisPermutation back, PlaneCrossing crossing, Frame exitFrame, OrientationRule rule, boolean gravityFlip) {
-        LookTransfer transfer(float yaw, float pitch) {
-            return ArrivalOrientation.transfer(looking(Angles.direction(yaw, pitch)), back(LookTransfer.cameraUp(yaw, pitch)),
-                exitFrame, rule, gravityFlip);
-        }
+    private static float nearest(float offset, float reference) {
+        float same = Angles.unwrap(offset, reference);
+        float turned = Angles.unwrap(offset + HALF_TURN, reference);
+        return Math.abs(same - reference) <= Math.abs(turned - reference) ? same : turned;
+    }
 
-        Vec3d facing(float bodyYaw) {
-            return ArrivalOrientation.direction(looking(Angles.direction(bodyYaw, 0.0F)), exitFrame, rule, gravityFlip);
-        }
+    private interface LookMap {
+        LookTransfer transfer(float yaw, float pitch);
+    }
 
-        private PlaneCrossing looking(Vec3d destinationLook) {
-            return new PlaneCrossing(crossing.frame(), crossing.origin(), crossing.point(), crossing.velocity(), back(destinationLook),
-                crossing.frontSide());
+    private record Rotation(AxisPermutation permutation) implements LookMap {
+        @Override
+        public LookTransfer transfer(float yaw, float pitch) {
+            return LookTransfer.of(new Look(yaw, pitch), permutation);
         }
+    }
 
-        private Vec3d back(Vec3d vector) {
-            double[] out = new double[3];
-            back.vectorInto(vector.x(), vector.y(), vector.z(), out);
-            return new Vec3d(out[0], out[1], out[2]);
+    private record Arrival(PlaneCrossing crossing, Frame exitFrame, OrientationRule rule, boolean gravityFlip) implements LookMap {
+        @Override
+        public LookTransfer transfer(float yaw, float pitch) {
+            PlaneCrossing looking = new PlaneCrossing(crossing.frame(), crossing.origin(), crossing.point(), crossing.velocity(),
+                Angles.direction(yaw, pitch), crossing.frontSide());
+            return ArrivalOrientation.transfer(looking, LookTransfer.cameraUp(yaw, pitch), exitFrame, rule, gravityFlip);
         }
     }
 }

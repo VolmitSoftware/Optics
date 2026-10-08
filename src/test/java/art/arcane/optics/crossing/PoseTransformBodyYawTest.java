@@ -17,23 +17,36 @@ final class PoseTransformBodyYawTest {
     private static final OpticTransform SOUTH_BECOMES_UP = OpticTransform.of(AxisPermutation.of(Face.E, Face.N, Face.U), 0.0D, 0.0D, 0.0D);
 
     @Test
-    void aBodyFacingMappedToVerticalAdoptsTheHeadYaw() {
+    void aTiltedPairKeepsTheBodyBesideTheHead() {
         Pose source = new Pose(ZERO, ZERO, ZERO, ZERO, 810.0F, 10.0F, 806.0F, 12.0F, 720.0F, 720.0F, 810.0F, 806.0F);
         Pose mapped = PoseTransform.apply(source, SOUTH_BECOMES_UP);
-        assertEquals(mapped.yaw(), mapped.bodyYaw(), 0.0F);
-        assertEquals(mapped.previousYaw(), mapped.previousBodyYaw(), 0.0F);
-        assertEquals(mapped.yaw() - mapped.previousYaw(), mapped.bodyYaw() - mapped.previousBodyYaw(), 0.0F);
-        assertTrue(Math.abs(mapped.bodyYaw() - mapped.previousBodyYaw()) < 180.0F);
+        assertTrue(Math.abs(mapped.bodyYaw() - mapped.headYaw()) <= 90.0F);
+        assertTrue(Math.abs(mapped.previousBodyYaw() - mapped.previousHeadYaw()) <= 90.0F);
+        assertEquals(mapped.bodyYaw(), mapped.previousBodyYaw(), 1.0E-3F);
         assertEquals(0.0F, Angles.unwrap(mapped.yaw(), 810.0F) - 810.0F, 30.0F);
     }
 
     @Test
-    void aBodyFacingThatStaysHorizontalKeepsItsOwnYaw() {
+    void aBodyTurnedAwayFromATiltedHeadFacesItsMappedLook() {
         Pose source = new Pose(ZERO, ZERO, ZERO, ZERO, 0.0F, 10.0F, 2.0F, 10.0F, -90.0F, -88.0F, 0.0F, 2.0F);
         Pose mapped = PoseTransform.apply(source, SOUTH_BECOMES_UP);
-        assertEquals(-90.0F, Angles.unwrap(mapped.bodyYaw(), -90.0F), 1.0E-4F);
-        assertEquals(mapped.bodyYaw(), mapped.previousBodyYaw(), 1.0E-3F);
-        assertTrue(Math.abs(mapped.bodyYaw() - mapped.yaw()) <= 180.0F);
+        Vec3d bodyLook = mapped(Angles.direction(-90.0F, 10.0F));
+        assertEquals(Angles.yaw(bodyLook.x(), bodyLook.z()), Angles.unwrap(mapped.bodyYaw(), Angles.yaw(bodyLook.x(), bodyLook.z())), 1.0E-3F);
+        assertEquals(mapped.bodyYaw(), mapped.previousBodyYaw(), 0.1F);
+        assertTrue(Math.abs(mapped.bodyYaw() - mapped.yaw()) <= 90.0F);
+    }
+
+    @Test
+    void aBodyNearAQuarterTurnFromTheHeadNeverFlipsSidesBetweenTicks() {
+        for (float offset = 80.0F; offset <= 100.0F; offset += 0.5F) {
+            for (float turn : new float[] {-3.0F, 3.0F}) {
+                Pose source = new Pose(ZERO, ZERO, ZERO, ZERO, 0.0F, 10.0F, turn, 10.0F, -offset, turn - offset, 0.0F, turn);
+                Pose mapped = PoseTransform.apply(source, SOUTH_BECOMES_UP);
+                String context = "offset " + offset + " turn " + turn + " " + mapped;
+                assertTrue(Math.abs(mapped.bodyYaw() - mapped.previousBodyYaw()) < 5.0F, context);
+                assertTrue(Math.abs(mapped.bodyYaw() - mapped.headYaw()) <= 90.0F, context);
+            }
+        }
     }
 
     @Test
@@ -49,5 +62,9 @@ final class PoseTransformBodyYawTest {
         assertEquals(mapped.yaw(), mapped.headYaw(), 1.0E-4F);
         assertEquals(mapped.previousYaw(), mapped.previousBodyYaw(), 0.0F);
         assertEquals(mapped.previousYaw(), mapped.previousHeadYaw(), 1.0E-4F);
+    }
+
+    private static Vec3d mapped(Vec3d vector) {
+        return SOUTH_BECOMES_UP.vector(vector);
     }
 }

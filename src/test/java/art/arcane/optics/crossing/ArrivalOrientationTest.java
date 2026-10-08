@@ -7,6 +7,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import art.arcane.optics.frame.Frame;
+import art.arcane.optics.frame.Similarity;
 import art.arcane.optics.math.Angles;
 import art.arcane.optics.math.Face;
 import art.arcane.optics.math.Vec3d;
@@ -119,20 +120,21 @@ final class ArrivalOrientationTest {
         Frame exitFrame = Frame.canonical(Face.E);
         Pose source = pose(170.0F, -20.0F, 166.0F, -18.0F);
         Pose crossed = PoseTransform.apply(source, crossing.toward(exitFrame, EXIT_ORIGIN));
+        Similarity toward = crossing.toward(exitFrame, EXIT_ORIGIN, 1.0D);
 
-        Pose framed = PoseTransform.arrive(crossed, crossing, exitFrame, OrientationRule.FRAME, false, null, 0.0D);
+        Pose framed = PoseTransform.arrive(source, crossing, toward, exitFrame, OrientationRule.FRAME, false, null, 0.0D);
         assertAngle(crossed.yaw(), framed.yaw());
         assertAngle(crossed.previousYaw(), framed.previousYaw());
         assertAngle(crossed.pitch(), framed.pitch());
         assertAngle(crossed.previousPitch(), framed.previousPitch());
         assertEquals(crossed.position(), framed.position());
 
-        Pose absolute = PoseTransform.arrive(crossed, crossing, exitFrame, OrientationRule.LOOK, false, null, 0.0D);
+        Pose absolute = PoseTransform.arrive(source, crossing, toward, exitFrame, OrientationRule.LOOK, false, null, 0.0D);
         assertAngle(4.0F, absolute.yaw() - absolute.previousYaw());
         assertAngle(170.0F, Angles.unwrap(absolute.yaw(), 170.0F));
         assertAngle(166.0F, Angles.unwrap(absolute.previousYaw(), 166.0F));
 
-        Pose snapped = PoseTransform.arrive(crossed, crossing, exitFrame, OrientationRule.SNAP, false, null, 0.0D);
+        Pose snapped = PoseTransform.arrive(source, crossing, toward, exitFrame, OrientationRule.SNAP, false, null, 0.0D);
         assertAngle(snapped.yaw(), snapped.previousYaw());
         assertAngle(0.0F, snapped.pitch());
         assertAngle(0.0F, snapped.previousPitch());
@@ -140,7 +142,7 @@ final class ArrivalOrientationTest {
         assertAngle(snapped.yaw(), snapped.previousHeadYaw());
         assertAngle(90.0F, Angles.unwrap(snapped.yaw(), 90.0F));
 
-        Pose mirrored = PoseTransform.arrive(crossed, crossing, exitFrame, OrientationRule.MIRROR, false, null, 0.0D);
+        Pose mirrored = PoseTransform.arrive(source, crossing, toward, exitFrame, OrientationRule.MIRROR, false, null, 0.0D);
         assertAngle(-(crossed.yaw() - crossed.previousYaw()), mirrored.yaw() - mirrored.previousYaw());
         assertAngle(crossed.previousPitch(), mirrored.previousPitch());
     }
@@ -151,7 +153,8 @@ final class ArrivalOrientationTest {
         Frame ceiling = Frame.canonical(Face.D);
         Pose source = pose(180.0F, -36.869896F, 176.0F, -30.0F);
         Pose crossed = PoseTransform.apply(source, crossing.toward(ceiling, EXIT_ORIGIN));
-        Pose flipped = PoseTransform.arrive(crossed, crossing, ceiling, OrientationRule.FRAME, true, null, 0.0D);
+        Similarity toward = crossing.toward(ceiling, EXIT_ORIGIN, 1.0D);
+        Pose flipped = PoseTransform.arrive(source, crossing, toward, ceiling, OrientationRule.FRAME, true, null, 0.0D);
 
         Angles.Look expectedCurrent = ArrivalOrientation.apply(crossing, ceiling, OrientationRule.FRAME, true);
         PlaneCrossing previousCrossing = new PlaneCrossing(crossing.frame(), crossing.origin(), crossing.point(), crossing.velocity(),
@@ -165,7 +168,7 @@ final class ArrivalOrientationTest {
         assertAngle(-30.0F, flipped.previousPitch());
         assertAngle(4.0F, flipped.yaw() - flipped.previousYaw());
 
-        Pose unflipped = PoseTransform.arrive(crossed, crossing, ceiling, OrientationRule.FRAME, false, null, 0.0D);
+        Pose unflipped = PoseTransform.arrive(source, crossing, toward, ceiling, OrientationRule.FRAME, false, null, 0.0D);
         assertAngle(crossed.pitch(), unflipped.pitch());
         assertAngle(crossed.previousPitch(), unflipped.previousPitch());
     }
