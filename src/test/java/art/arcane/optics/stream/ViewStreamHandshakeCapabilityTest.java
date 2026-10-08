@@ -65,14 +65,6 @@ final class ViewStreamHandshakeCapabilityTest {
     }
 
     @Test
-    void entitySelfKeepsItsParent() {
-        long self = ViewStreamCapability.ENTITY_SELF.mask();
-        assertFalse(ViewStreamCapability.ENTITY_SELF.in(accept(BASE | self, BASE | self)));
-        long frames = ViewStreamCapability.ENTITY_FRAMES.mask();
-        assertTrue(ViewStreamCapability.ENTITY_SELF.in(accept(BASE | self | frames, BASE | self | frames)));
-    }
-
-    @Test
     void extensionsMayOnlyClaimUnownedBitsInTheExtensionRange() {
         assertThrows(IllegalArgumentException.class,
             () -> new ViewStreamCodec(List.of(new Declared(60, ViewStreamCapability.MESH_RENDER.mask(), Map.of()))));

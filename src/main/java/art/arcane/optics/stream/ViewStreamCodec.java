@@ -750,10 +750,6 @@ public final class ViewStreamCodec {
                 out.u8(m.animation());
                 out.f32(m.yaw());
             }
-            case ViewStreamMessage.EntitySelf m -> {
-                out.i64(m.projectedId().getMostSignificantBits());
-                out.i64(m.projectedId().getLeastSignificantBits());
-            }
             case ViewStreamMessage.EntityFrame m -> {
                 out.varint(m.portalKey());
                 out.i32(m.entitySeq());
@@ -990,7 +986,6 @@ public final class ViewStreamCodec {
                 }
                 yield new ViewStreamMessage.EntityEvent(portalKey, eventSeq, entityId, hurt, animation, yaw);
             }
-            case ENTITY_SELF -> new ViewStreamMessage.EntitySelf(new UUID(in.i64(), in.i64()));
             case ENTITY_FRAME -> {
                 int portalKey = in.varint();
                 int seq = in.i32();

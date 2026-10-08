@@ -111,9 +111,6 @@ public final class ViewStreamHandshake {
             return new Result(state, new ViewStreamMessage.Decline(reason), late);
         }
         long caps = ViewStreamCapability.intersection(policy.serverCaps(), hello.clientCaps());
-        if (!ViewStreamCapability.ENTITY_FRAMES.in(caps)) {
-            caps &= ~ViewStreamCapability.ENTITY_SELF.mask();
-        }
         boolean zeroCopy = policy.zeroCopy() && zeroCopyNonce != 0L && hello.zeroCopyNonceEcho() == zeroCopyNonce;
         if (!zeroCopy) {
             caps &= ~ViewStreamCapability.ZERO_COPY.mask();

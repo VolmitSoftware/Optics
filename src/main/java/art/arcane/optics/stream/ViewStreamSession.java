@@ -85,7 +85,6 @@ public final class ViewStreamSession<O, B> {
     private FrameSplitter splitter;
     private long laneCaps;
     private boolean laneOpen;
-    private boolean entitySelfPending;
     private boolean laneSent;
     private int lastLaneSequence;
 
@@ -890,7 +889,7 @@ public final class ViewStreamSession<O, B> {
         boolean queued = false;
         if (!slot.effects && options.entityFrames() && ViewStreamCapability.ENTITY_FRAMES.in(sessionCaps)) {
             ViewStreamMessage.EntityFrame frame = platform.entities().frame(player,
-                entityTarget(slot, slot.portalId, clientMirror(slot.baseGeometry)), serverTick);
+                entityTarget(slot, slot.portalId, !streamedMirror(slot.baseGeometry)), serverTick);
             if (frame != null) {
                 slot.needFullEntities = false;
                 inbox.add(new Scene<B>(slot, mesh.localEntities(frame)));
@@ -1088,7 +1087,7 @@ public final class ViewStreamSession<O, B> {
             }
             if (registry.options().entityFrames() && ViewStreamCapability.ENTITY_FRAMES.in(caps)) {
                 ViewStreamMessage.EntityFrame entities = platform.entities().frame(player,
-                    entityTarget(child, child.contextId, clientMirror(child.baseGeometry)), serverTick);
+                    entityTarget(child, child.contextId, !streamedMirror(child.baseGeometry)), serverTick);
                 if (entities != null) {
                     child.needFullEntities = false;
                     inbox.add(new Scene<>(child, mesh.localEntities(entities)));
@@ -1159,6 +1158,10 @@ public final class ViewStreamSession<O, B> {
         return geometry != null && geometry.mirror() && ViewStreamCapability.CLIENT_MIRROR.in(caps) && registry.options().clientMirror();
     }
 
+    private boolean streamedMirror(ApertureDescriptor geometry) {
+        return geometry != null && geometry.mirror() && !clientMirror(geometry);
+    }
+
     private static EntityFrameTarget entityTarget(ViewStreamSlot<?> slot, UUID portalId, boolean hideObserver) {
         EntityFrameTarget cached = slot.entityTarget;
         boolean full = slot.needFullEntities;
@@ -1200,7 +1203,6 @@ public final class ViewStreamSession<O, B> {
         laneScene.clear();
         cursor = registry.palette().cursor();
         laneCaps = open.accept().caps();
-        entitySelfPending = ViewStreamCapability.ENTITY_SELF.in(laneCaps);
         splitter = new FrameSplitter(open.accept().maxFrameBytes(), ViewStreamCapability.LINK_UNCOMPRESSED.in(laneCaps), registry.codec());
         laneOpen = true;
     }
@@ -1242,7 +1244,6 @@ public final class ViewStreamSession<O, B> {
         laneScene.clear();
         laneBursts.clear();
         cursor.reset();
-        entitySelfPending = ViewStreamCapability.ENTITY_SELF.in(laneCaps);
         ViewStreamAckWindow active = window;
         if (active != null) {
             active.clear();
@@ -1452,14 +1453,7 @@ public final class ViewStreamSession<O, B> {
                 continue;
             }
             try {
-                boolean bindSelf = entitySelfPending && scene.message() instanceof ViewStreamMessage.EntityFrame;
-                List<ViewStreamMessage> group = bindSelf
-                    ? List.of(new ViewStreamMessage.EntitySelf(platform.entities().projectedId(playerId)), scene.message())
-                    : List.of(scene.message());
-                emit(group, false);
-                if (bindSelf) {
-                    entitySelfPending = false;
-                }
+                emit(List.of(scene.message()), false);
             } catch (ViewStreamProtocolException failure) {
                 resendScene(slot, scene.message());
                 platform.warnings().accept("View stream " + registry.codec().name(scene.message()) + " failed for player " + playerId, failure);

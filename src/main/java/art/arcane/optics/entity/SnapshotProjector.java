@@ -112,7 +112,8 @@ public final class SnapshotProjector<O, W, P extends Endpoint, R, T, V> {
             if (count >= pass.limit()) {
                 break;
             }
-            if (!feed.visible(observer, pass.view(), visual.id())) {
+            if (!feed.visible(observer, pass.view(), visual.id())
+                || !pass.showObserver() && feed.isObserver(observer, visual.id())) {
                 continue;
             }
             if (fullyHidden(pass.occlusion(), visual, path)) {
@@ -141,7 +142,7 @@ public final class SnapshotProjector<O, W, P extends Endpoint, R, T, V> {
 
     public record Pass<W, P extends Endpoint, V, B, BV extends BlockView<B>>(
         P local, Endpoint remote, V view, OpticTransform transform, ViewVolume frustum, EntityPath<W, P> path,
-        EntityOcclusion<B, BV> occlusion, double range, int limit) {
+        EntityOcclusion<B, BV> occlusion, double range, int limit, boolean showObserver) {
     }
 
     public record EntityRange(double x, double y, double z, double range) {

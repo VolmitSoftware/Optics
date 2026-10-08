@@ -74,8 +74,6 @@ final class ViewStreamFixtures {
             List.of(new ViewStreamMessage.MeshClaim(-32, 4, -10, 0x1122334455667788L))), ViewStreamCapability.NONE, 0, 0));
         out.add(new Vector("mesh_reuse", new ViewStreamMessage.MeshReuse(7, 12, -32, 4, -10, 2, 0x1122334455667788L), ViewStreamCapability.ALL, 16, 0));
         out.add(new Vector("environment", new ViewStreamMessage.Environment(7, environment()), ViewStreamCapability.ALL, 17, 0));
-        out.add(new Vector("entity_self", new ViewStreamMessage.EntitySelf(new UUID(12, 34)),
-            ViewStreamCapability.ALL, 24, ViewStreamLimits.FLAG_LAST));
         return out;
     }
 

@@ -20,7 +20,6 @@ public enum ViewStreamMessageType {
     MESH_DROP(18, Direction.S2C),
     ENVIRONMENT(19, Direction.S2C),
     ENTITY_EVENT(20, Direction.S2C),
-    ENTITY_SELF(21, Direction.S2C),
     HELLO(32, Direction.C2S),
     BRICK_MISS(33, Direction.C2S),
     ACK(34, Direction.C2S),

@@ -71,6 +71,11 @@ public final class LocalOcclusionRetryTest {
         }
 
         @Override
+        public boolean isObserver(Object observer, UUID entityId) {
+            return false;
+        }
+
+        @Override
         public EntityProfile profile(Object view, UUID entityId) {
             return null;
         }

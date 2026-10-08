@@ -4,7 +4,7 @@ import art.arcane.optics.fidelity.BlockEntitySample;
 import art.arcane.optics.shape.ShapeDescriptor;
 
 public final class ViewStreamLimits {
-    public static final int WIRE_VERSION = 7;
+    public static final int WIRE_VERSION = 8;
     public static final int MAX_MESSAGE_ID = 255;
     public static final int MAX_HELLO_GRACE_MILLIS = 5000;
     public static final int MAX_ACK_WINDOW_FRAMES = 255;

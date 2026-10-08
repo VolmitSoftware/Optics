@@ -13,6 +13,8 @@ public interface EntityFeed<O, W, V, E> {
 
     boolean visible(O observer, V view, UUID entityId);
 
+    boolean isObserver(O observer, UUID entityId);
+
     EntityProfile profile(V view, UUID entityId);
 
     int stateVersion(V view, UUID entityId);

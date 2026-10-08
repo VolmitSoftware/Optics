@@ -431,17 +431,6 @@ public sealed interface ViewStreamMessage {
         }
     }
 
-    record EntitySelf(UUID projectedId) implements Projection {
-        public EntitySelf {
-            Objects.requireNonNull(projectedId, "projectedId");
-        }
-
-        @Override
-        public ViewStreamMessageType type() {
-            return ViewStreamMessageType.ENTITY_SELF;
-        }
-    }
-
     record EntityFrame(int portalKey, int entitySeq, List<EntitySnapshot> entities, List<UUID> presentIds, boolean presence)
         implements Projection {
         public EntityFrame {

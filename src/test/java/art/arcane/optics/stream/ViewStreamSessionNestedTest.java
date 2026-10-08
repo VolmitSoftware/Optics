@@ -253,19 +253,27 @@ final class ViewStreamSessionNestedTest {
     }
 
     @Test
-    void clientMirrorEntityFramesHideTheObserverWhileServerMirrorsKeepIt() throws ViewStreamProtocolException {
-        assertEquals(List.of(true), hideObserverCalls(SessionHarness.CLIENT_CAPS), "the client draws its own reflection");
-        assertEquals(List.of(false), hideObserverCalls(WITHOUT_MIRROR), "a streamed mirror plate needs the projected observer");
+    void entityFramesHideTheObserverOutsideStreamedMirrors() throws ViewStreamProtocolException {
+        assertEquals(List.of(true), hideObserverCalls(SessionHarness.CLIENT_CAPS, true), "the client draws its own reflection");
+        assertEquals(List.of(false), hideObserverCalls(WITHOUT_MIRROR, true), "a streamed mirror plate needs the projected observer");
+        assertEquals(List.of(true), hideObserverCalls(SessionHarness.CLIENT_CAPS, false), "a linked portal never shows the observer");
+        assertEquals(List.of(true), hideObserverCalls(WITHOUT_MIRROR, false), "a linked portal never shows the observer");
     }
 
-    private static List<Boolean> hideObserverCalls(long clientCaps) throws ViewStreamProtocolException {
+    private static List<Boolean> hideObserverCalls(long clientCaps, boolean mirrored) throws ViewStreamProtocolException {
         SessionHarness harness = new SessionHarness(SessionHarness.options(true, 8));
         List<Boolean> calls = new ArrayList<Boolean>();
         harness.entities = (observer, target, tick) -> {
             calls.add(target.hideObserver());
             return null;
         };
-        mirror(harness, new SessionWorld(28L), 0);
+        SessionWorld world = new SessionWorld(28L);
+        if (mirrored) {
+            mirror(harness, world, 0);
+        } else {
+            SessionPortal linked = harness.access.add(new SessionPortal("linked", 0));
+            linked.plate = linked.build(world);
+        }
         harness.handshake(clientCaps);
         harness.tick();
         return calls;

@@ -36,8 +36,7 @@ public record ViewStreamOptions(boolean enabled,
             caps |= ViewStreamCapability.DEST_LIGHT.mask();
         }
         if (entityFrames) {
-            caps |= ViewStreamCapability.ENTITY_FRAMES.mask() | ViewStreamCapability.ENTITY_EVENTS.mask()
-                | ViewStreamCapability.ENTITY_SELF.mask();
+            caps |= ViewStreamCapability.ENTITY_FRAMES.mask() | ViewStreamCapability.ENTITY_EVENTS.mask();
         }
         if (zeroCopy) {
             caps |= ViewStreamCapability.ZERO_COPY.mask();
