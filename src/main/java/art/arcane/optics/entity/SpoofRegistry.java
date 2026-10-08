@@ -221,7 +221,7 @@ public final class SpoofRegistry<O, R> {
 
     private boolean hasTrackedRelationshipState() {
         for (SpoofedEntity state : spoofed.values()) {
-            if (state.leashedToFakeId() >= 0) {
+            if (state.leashedToFakeId() != NO_LEASH_HOLDER && state.leashedToFakeId() != NEVER_LEASHED) {
                 return true;
             }
             int[] lastPassengers = state.lastPassengers();

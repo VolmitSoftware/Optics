@@ -62,6 +62,26 @@ public final class EntityRenderSpoofRegistryTest {
     }
 
     @Test
+    public void negativeFakeIdsStillSendTheUnleash() {
+        RecordingEntityOutput host = new RecordingEntityOutput();
+        SpoofRegistry<Object, Vec3d> registry = new SpoofRegistry<>(host);
+        AtomicInteger negativeIds = new AtomicInteger(-0x20000000);
+        UUID holder = UUID.randomUUID();
+        UUID leashed = UUID.randomUUID();
+        SpoofedEntity holderState = SpoofedEntity.create(negativeIds::getAndDecrement, false, false, true);
+        SpoofedEntity leashedState = SpoofedEntity.create(negativeIds::getAndDecrement, false, false, true);
+        registry.track(holder, holderState);
+        registry.track(leashed, leashedState);
+        registry.applyRelationships(host, (Collection<EntityRelationship>) List.<EntityRelationship>of(
+            new EntityRelationship(leashed, null, List.of(), holder)));
+        assertArrayEquals(new int[] {leashedState.fakeId(), holderState.fakeId()}, host.leashes.getFirst());
+        registry.applyRelationships(host, (Collection<EntityRelationship>) List.<EntityRelationship>of(
+            new EntityRelationship(leashed, null, List.of(), null)));
+        assertEquals(2, host.leashes.size());
+        assertArrayEquals(new int[] {leashedState.fakeId(), -1}, host.leashes.getLast());
+    }
+
+    @Test
     public void teardownRetainsUncommittedIdsAndDestroysPlayerLabel() {
         RecordingEntityOutput host = new RecordingEntityOutput();
         SpoofRegistry<Object, Vec3d> registry = new SpoofRegistry<>(host);
