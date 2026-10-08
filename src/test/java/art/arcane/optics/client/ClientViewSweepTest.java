@@ -1,5 +1,6 @@
 package art.arcane.optics.client;
 
+import art.arcane.optics.shape.ShapeDescriptor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -239,7 +240,7 @@ final class ClientViewSweepTest {
         ClientSweepScene scene = ClientSweepScene.rtpWall(32, 24);
         ApertureDescriptor valid = scene.geometry(true, ApertureDescriptor.BLACKOUT_OFF);
         ApertureDescriptor broken = new ApertureDescriptor(valid.originX(), valid.originY(), valid.originZ(), 17, true, 0, false,
-            valid.apertureWidth(), valid.apertureHeight(), valid.apertureMask(), 2.0F, 0.75F, 0.2F, 32, 0, 0, 0, 0, 0, 0, 0, 0.0D, 0, 0L, List.of());
+            valid.apertureWidth(), valid.apertureHeight(), valid.apertureMask(), ShapeDescriptor.FULL, 2.0F, 0.75F, 0.2F, 32, 0, 0, 0, 0, 0, 0, 0, 0.0D, 0, 0L, List.of());
         assertThrows(IllegalArgumentException.class, () -> new ClientSweep(broken, scene.bounds(true), HYSTERESIS));
         assertThrows(IllegalArgumentException.class, () -> new ClientSweep(valid, scene.bounds(true), -1.0D));
     }
@@ -319,7 +320,7 @@ final class ClientViewSweepTest {
         ApertureDescriptor geometry = ApertureDescriptor.fromPortal(new ApertureDescriptor.Source(aperture, frame, frontSide, mirror, 0,
             ClientSweepScene.NEAR_PLANE_PADDING, ClientSweepScene.APERTURE_PADDING, ClientSweepScene.CULLING_RATIO, 64, 0,
             ApertureDescriptor.BLACKOUT_OFF, 0, ApertureDescriptor.MASK_AIR_PROJECT, BlockClaim.LightingPolicy.SOURCE, 0,
-            mirror ? 0 : 1, 0.0D, 0, 0L, List.of())).orElseThrow();
+            mirror ? 0 : 1, 0.0D, 0, 0L, ShapeDescriptor.FULL, List.of())).orElseThrow();
         BlockBox bounds = ClientSweepScene.plateBox(area, frame, origin, frontSide, 64, 40, ClientSweepScene.APERTURE_PADDING);
         return new ClientSweep(geometry, bounds, HYSTERESIS);
     }

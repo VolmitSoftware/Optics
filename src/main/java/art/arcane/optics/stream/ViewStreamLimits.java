@@ -1,9 +1,10 @@
 package art.arcane.optics.stream;
 
 import art.arcane.optics.fidelity.BlockEntitySample;
+import art.arcane.optics.shape.ShapeDescriptor;
 
 public final class ViewStreamLimits {
-    public static final int WIRE_VERSION = 6;
+    public static final int WIRE_VERSION = 7;
     public static final int MAX_MESSAGE_ID = 255;
     public static final int MAX_HELLO_GRACE_MILLIS = 5000;
     public static final int MAX_ACK_WINDOW_FRAMES = 255;
@@ -49,6 +50,7 @@ public final class ViewStreamLimits {
     public static final int PRESENCE_UNCHANGED = 0xFFFF;
     public static final int MAX_ENTITY_VISUAL_BYTES = 16 * 1024;
     public static final int MAX_APERTURE_MASK_WORDS = 1024;
+    public static final int MAX_SHAPE_BYTES = ShapeDescriptor.MAX_BYTES;
     public static final int MAX_NESTED_GEOMETRY = 16;
     public static final int MAX_LINKED_GEOMETRY_DEPTH = 4;
     public static final int MAX_MIRROR_REFLECTIONS = 4;

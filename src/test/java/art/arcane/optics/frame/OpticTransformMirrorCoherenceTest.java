@@ -1,5 +1,6 @@
 package art.arcane.optics.frame;
 
+import art.arcane.optics.shape.ShapeDescriptor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
@@ -75,7 +76,7 @@ final class OpticTransformMirrorCoherenceTest {
             20, normal.z() != 0 ? 20.999D : 22.999D));
         ApertureDescriptor.Source source = new ApertureDescriptor.Source(aperture, frame, true, true, turns.getQuarterTurns(), 2.0D,
             0.75D, 0.2D, 16, 1, ApertureDescriptor.BLACKOUT_OFF, 0, ApertureDescriptor.MASK_AIR_PROJECT,
-            BlockClaim.LightingPolicy.LOCAL, 0, 0, 0.0D, 0, 0L, List.of());
+            BlockClaim.LightingPolicy.LOCAL, 0, 0, 0.0D, 0, 0L, ShapeDescriptor.FULL, List.of());
         return ApertureDescriptor.fromPortal(source).orElseThrow();
     }
 }

@@ -1,5 +1,6 @@
 package art.arcane.optics.aperture;
 
+import art.arcane.optics.shape.ShapeDescriptor;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -101,7 +102,7 @@ final class ClientPortalGeometryTest {
         assertArrayEquals(second.apertureMask(), first.apertureMask());
         ApertureDescriptor holed = new ApertureDescriptor(first.originX(), first.originY(), first.originZ(), first.facing(),
             first.frontSide(), first.quarterTurns(), first.mirror(), first.apertureWidth(), first.apertureHeight(),
-            new long[] {0x7FFEL}, first.nearPlanePadding(), first.aperturePadding(), first.frustumCullingRatio(), first.depthBlocks(),
+            new long[] {0x7FFEL}, first.shape(), first.nearPlanePadding(), first.aperturePadding(), first.frustumCullingRatio(), first.depthBlocks(),
             first.recursionDepth(), first.blackoutPolicy(), first.blackoutState(), first.maskAirPolicy(), first.lightingPolicy(),
             first.fidelityFlags(), first.kind(), first.planeOffset(), first.parentPortalKey(), first.targetIdentity(), first.nested());
         assertNotEquals(first, holed);
@@ -129,7 +130,7 @@ final class ClientPortalGeometryTest {
             Frame.canonical(Face.N), true, 1)).orElseThrow();
         assertFalse(base.sameSurface(rotated));
         ApertureDescriptor retargeted = new ApertureDescriptor(base.originX(), base.originY(), base.originZ(), base.facing(),
-            base.frontSide(), base.quarterTurns(), base.mirror(), base.apertureWidth(), base.apertureHeight(), base.apertureMask(),
+            base.frontSide(), base.quarterTurns(), base.mirror(), base.apertureWidth(), base.apertureHeight(), base.apertureMask(), base.shape(),
             base.nearPlanePadding(), base.aperturePadding(), base.frustumCullingRatio(), base.depthBlocks(), base.recursionDepth(),
             base.blackoutPolicy(), base.blackoutState(), base.maskAirPolicy(), base.lightingPolicy(), base.fidelityFlags(),
             base.kind(), base.planeOffset(), base.parentPortalKey(), 123L, base.nested());
@@ -204,12 +205,12 @@ final class ClientPortalGeometryTest {
         return new ApertureDescriptor.Source(aperture, frame, true, mirror, mirrorTurns, 2.0D, 0.75D, 0.2D, 64, 3,
             ApertureDescriptor.BLACKOUT_SHELL, 7, ApertureDescriptor.MASK_AIR_PROJECT, BlockClaim.LightingPolicy.SOURCE,
             ApertureDescriptor.FIDELITY_LIGHTING | ApertureDescriptor.FIDELITY_WEATHER, 0, 0.0D, 0, 0L,
-            List.of());
+            ShapeDescriptor.FULL, List.of());
     }
 
     private static ApertureDescriptor copy(ApertureDescriptor base, int facing, long[] mask, int kindOffset) {
         return new ApertureDescriptor(base.originX(), base.originY(), base.originZ(), facing, base.frontSide(), base.quarterTurns(),
-            base.mirror(), base.apertureWidth(), base.apertureHeight(), mask, base.nearPlanePadding(), base.aperturePadding(),
+            base.mirror(), base.apertureWidth(), base.apertureHeight(), mask, base.shape(), base.nearPlanePadding(), base.aperturePadding(),
             base.frustumCullingRatio(), base.depthBlocks(), base.recursionDepth(), base.blackoutPolicy(), base.blackoutState(),
             base.maskAirPolicy(), base.lightingPolicy(), base.fidelityFlags(), base.kind() + kindOffset, base.planeOffset(), base.parentPortalKey(),
             base.targetIdentity(), base.nested());

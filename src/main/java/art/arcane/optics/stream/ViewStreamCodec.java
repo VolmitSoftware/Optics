@@ -15,9 +15,11 @@ import java.util.zip.Inflater;
 import art.arcane.optics.aperture.ApertureDescriptor;
 import art.arcane.optics.entity.EntitySnapshot;
 import art.arcane.optics.math.BlockBox;
+import art.arcane.optics.shape.ShapeDescriptor;
 
 public final class ViewStreamCodec {
     private static final int MAX_CELL_BOX_EDGE = 65535;
+    private static final byte[] EMPTY_SHAPE = new byte[0];
 
     private final ViewStreamExtension<?>[] owners;
     private final long[] prerequisites;
@@ -300,6 +302,9 @@ public final class ViewStreamCodec {
         }
         out.varint(mask.length);
         out.longs(mask);
+        byte[] shape = geometry.shape().isFull() ? EMPTY_SHAPE : geometry.shape().encode();
+        out.varint(shape.length);
+        out.bytes(shape);
         out.f32(geometry.nearPlanePadding());
         out.f32(geometry.aperturePadding());
         out.f32(geometry.frustumCullingRatio());
@@ -339,6 +344,8 @@ public final class ViewStreamCodec {
         int apertureHeight = in.u16();
         int words = in.checkedCount(in.varint(), ViewStreamLimits.MAX_APERTURE_MASK_WORDS, 8);
         long[] mask = in.longs(words);
+        int shapeBytes = in.checkedCount(in.varint(), ViewStreamLimits.MAX_SHAPE_BYTES, 1);
+        ShapeDescriptor shape = shapeBytes == 0 ? ShapeDescriptor.FULL : decodeShape(in.bytes(shapeBytes));
         float nearPlanePadding = in.f32();
         float aperturePadding = in.f32();
         float frustumCullingRatio = in.f32();
@@ -359,8 +366,16 @@ public final class ViewStreamCodec {
             nested.add(readGeometry(in, depth + 1));
         }
         return new ApertureDescriptor(originX, originY, originZ, facing, frontSide, quarterTurns, mirror, apertureWidth, apertureHeight,
-            mask, nearPlanePadding, aperturePadding, frustumCullingRatio, depthBlocks, recursionDepth, blackoutPolicy, blackoutState,
+            mask, shape, nearPlanePadding, aperturePadding, frustumCullingRatio, depthBlocks, recursionDepth, blackoutPolicy, blackoutState,
             maskAirPolicy, lightingPolicy, fidelityFlags, kind, planeOffset, parentPortalKey, targetIdentity, nested);
+    }
+
+    private static ShapeDescriptor decodeShape(byte[] bytes) throws ViewStreamProtocolException {
+        try {
+            return ShapeDescriptor.decode(bytes);
+        } catch (IllegalArgumentException invalid) {
+            throw new ViewStreamProtocolException("invalid aperture shape", invalid);
+        }
     }
 
     public static byte[] deflate(byte[] data, int length) {

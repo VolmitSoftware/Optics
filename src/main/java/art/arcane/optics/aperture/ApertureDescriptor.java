@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import art.arcane.optics.internal.shape.Placement;
 import art.arcane.optics.math.Vec3d;
 import art.arcane.optics.frame.Frame;
 import art.arcane.optics.frame.OpticTransform;
@@ -13,6 +14,9 @@ import art.arcane.optics.frame.QuarterTurn;
 import art.arcane.optics.claim.BlockClaim;
 import art.arcane.optics.math.Box;
 import art.arcane.optics.math.Face;
+import art.arcane.optics.shape.PlaneShape;
+import art.arcane.optics.shape.PlaneTransform;
+import art.arcane.optics.shape.ShapeDescriptor;
 
 public record ApertureDescriptor(int originX,
                                    int originY,
@@ -24,6 +28,7 @@ public record ApertureDescriptor(int originX,
                                    int apertureWidth,
                                    int apertureHeight,
                                    long[] apertureMask,
+                                   ShapeDescriptor shape,
                                    float nearPlanePadding,
                                    float aperturePadding,
                                    float frustumCullingRatio,
@@ -58,6 +63,7 @@ public record ApertureDescriptor(int originX,
 
     public ApertureDescriptor {
         Objects.requireNonNull(apertureMask, "apertureMask");
+        shape = shape == null ? ShapeDescriptor.FULL : shape;
         nested = nested == null ? List.of() : List.copyOf(nested);
     }
 
@@ -103,7 +109,7 @@ public record ApertureDescriptor(int originX,
             : source.lightingPolicy();
         return Optional.of(new ApertureDescriptor(min[0], min[1], min[2], normal.ordinal(), source.frontSide(),
             packQuarterTurns(frameTurns, source.mirror() ? source.mirrorQuarterTurns() : 0), source.mirror(),
-            columns, rows, apertureMask(columns, rows, open),
+            columns, rows, apertureMask(columns, rows, open), source.shape(),
             (float) source.nearPlanePadding(), (float) source.aperturePadding(), (float) source.frustumCullingRatio(),
             source.depthBlocks(), Math.max(0, source.recursionDepth()), source.blackoutPolicy(), source.blackoutState(),
             source.maskAirPolicy(), lighting.ordinal(), source.fidelityFlags(), source.kind(), source.planeOffset(), source.parentPortalKey(),
@@ -141,19 +147,26 @@ public record ApertureDescriptor(int originX,
             && maskAirPolicy >= MASK_AIR_PROJECT && maskAirPolicy <= MASK_AIR_KEEP_REAL
             && lightingPolicy >= 0 && lightingPolicy < LIGHTING_POLICIES.length
             && kind >= 0 && kind <= MAX_KIND
-            && Double.isFinite(planeOffset);
+            && Double.isFinite(planeOffset)
+            && shape.encodedSize() <= ShapeDescriptor.MAX_BYTES;
     }
 
     public ApertureDescriptor withParent(int parentKey) {
         return new ApertureDescriptor(originX, originY, originZ, facing, frontSide, quarterTurns, mirror, apertureWidth, apertureHeight,
-            apertureMask, nearPlanePadding, aperturePadding, frustumCullingRatio, depthBlocks, recursionDepth, blackoutPolicy, blackoutState,
-            maskAirPolicy, lightingPolicy, fidelityFlags, kind, planeOffset, parentKey, targetIdentity, nested);
+            apertureMask, shape, nearPlanePadding, aperturePadding, frustumCullingRatio, depthBlocks, recursionDepth, blackoutPolicy,
+            blackoutState, maskAirPolicy, lightingPolicy, fidelityFlags, kind, planeOffset, parentKey, targetIdentity, nested);
     }
 
     public ApertureDescriptor withNested(List<ApertureDescriptor> children) {
         return new ApertureDescriptor(originX, originY, originZ, facing, frontSide, quarterTurns, mirror, apertureWidth, apertureHeight,
-            apertureMask, nearPlanePadding, aperturePadding, frustumCullingRatio, depthBlocks, recursionDepth, blackoutPolicy, blackoutState,
-            maskAirPolicy, lightingPolicy, fidelityFlags, kind, planeOffset, parentPortalKey, targetIdentity, children);
+            apertureMask, shape, nearPlanePadding, aperturePadding, frustumCullingRatio, depthBlocks, recursionDepth, blackoutPolicy,
+            blackoutState, maskAirPolicy, lightingPolicy, fidelityFlags, kind, planeOffset, parentPortalKey, targetIdentity, children);
+    }
+
+    public ApertureDescriptor withShape(ShapeDescriptor shape) {
+        return new ApertureDescriptor(originX, originY, originZ, facing, frontSide, quarterTurns, mirror, apertureWidth, apertureHeight,
+            apertureMask, shape, nearPlanePadding, aperturePadding, frustumCullingRatio, depthBlocks, recursionDepth, blackoutPolicy,
+            blackoutState, maskAirPolicy, lightingPolicy, fidelityFlags, kind, planeOffset, parentPortalKey, targetIdentity, nested);
     }
 
     public boolean apertureOpen(int column, int row) {
@@ -163,6 +176,42 @@ public record ApertureDescriptor(int originX,
         int bit = (row * apertureWidth) + column;
         int word = bit >>> 6;
         return word < apertureMask.length && (apertureMask[word] & (1L << (bit & 63))) != 0L;
+    }
+
+    public PlaneShape planeShape() {
+        return PlaneShape.fit(shape.shape(), shape.fit(), apertureWidth, apertureHeight, frameOrientation());
+    }
+
+    public PlaneTransform frameOrientation() {
+        Frame frame = frame();
+        int normalAxis = facingDirection().axisIndex();
+        int columnAxis = columnAxis(normalAxis);
+        int rowAxis = rowAxis(normalAxis);
+        Face right = frame.getRight();
+        Face up = frame.getUp();
+        return new PlaneTransform(right.component(columnAxis), up.component(columnAxis), right.component(rowAxis), up.component(rowAxis),
+            0.0D, 0.0D);
+    }
+
+    public void cellCoordinates(double x, double y, double z, double[] out2) {
+        out2[0] = column(x, y, z);
+        out2[1] = row(x, y, z);
+    }
+
+    public boolean containsPoint(double x, double y, double z) {
+        if (!containsCell((int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z))) {
+            return false;
+        }
+        if (shape.isFull()) {
+            return true;
+        }
+        double column = column(x, y, z);
+        double row = row(x, y, z);
+        PlaneTransform inverse = frameOrientation().inverse();
+        double scaleU = Placement.scaleU(shape.fit(), apertureWidth, apertureHeight);
+        double scaleV = Placement.scaleV(shape.fit(), apertureWidth, apertureHeight);
+        return shape.shape().contains(Placement.unitU(column, row, apertureWidth, apertureHeight, scaleU, scaleV, inverse),
+            Placement.unitV(column, row, apertureWidth, apertureHeight, scaleU, scaleV, inverse));
     }
 
     public boolean containsCell(int x, int y, int z) {
@@ -219,7 +268,7 @@ public record ApertureDescriptor(int originX,
 
     public ApertureDescriptor withDepth(int depth) {
         return new ApertureDescriptor(originX, originY, originZ, facing, frontSide, quarterTurns, mirror, apertureWidth,
-            apertureHeight, apertureMask, nearPlanePadding, aperturePadding, frustumCullingRatio, depth, recursionDepth,
+            apertureHeight, apertureMask, shape, nearPlanePadding, aperturePadding, frustumCullingRatio, depth, recursionDepth,
             blackoutPolicy, blackoutState, maskAirPolicy, lightingPolicy, fidelityFlags, kind, planeOffset, parentPortalKey, targetIdentity,
             nested);
     }
@@ -317,12 +366,13 @@ public record ApertureDescriptor(int originX,
             && blackoutPolicy == that.blackoutPolicy && blackoutState == that.blackoutState && maskAirPolicy == that.maskAirPolicy
             && lightingPolicy == that.lightingPolicy && fidelityFlags == that.fidelityFlags && kind == that.kind
             && Double.doubleToLongBits(planeOffset) == Double.doubleToLongBits(that.planeOffset)
-            && parentPortalKey == that.parentPortalKey && targetIdentity == that.targetIdentity;
+            && parentPortalKey == that.parentPortalKey && targetIdentity == that.targetIdentity
+            && shape.equals(that.shape);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(originX, originY, originZ, facing, frontSide, quarterTurns, mirror, apertureWidth, apertureHeight,
+        int result = Objects.hash(originX, originY, originZ, facing, frontSide, quarterTurns, mirror, apertureWidth, apertureHeight, shape,
             nearPlanePadding, aperturePadding, frustumCullingRatio, depthBlocks, recursionDepth, blackoutPolicy, blackoutState,
             maskAirPolicy, lightingPolicy, fidelityFlags, kind, planeOffset, parentPortalKey, targetIdentity, nested);
         return result * 31 + Arrays.hashCode(apertureMask);
@@ -332,12 +382,34 @@ public record ApertureDescriptor(int originX,
     public String toString() {
         return "ApertureDescriptor[origin=" + originX + "," + originY + "," + originZ
             + ", facing=" + facing + ", frontSide=" + frontSide + ", quarterTurns=" + quarterTurns + ", mirror=" + mirror
-            + ", aperture=" + apertureWidth + "x" + apertureHeight + ", mask=" + Arrays.toString(apertureMask)
+            + ", aperture=" + apertureWidth + "x" + apertureHeight + ", mask=" + Arrays.toString(apertureMask) + ", shape=" + shape.format()
             + ", nearPlanePadding=" + nearPlanePadding + ", aperturePadding=" + aperturePadding
             + ", frustumCullingRatio=" + frustumCullingRatio + ", depthBlocks=" + depthBlocks + ", recursionDepth=" + recursionDepth
             + ", blackoutPolicy=" + blackoutPolicy + ", blackoutState=" + blackoutState + ", maskAirPolicy=" + maskAirPolicy
             + ", lightingPolicy=" + lightingPolicy + ", fidelityFlags=" + fidelityFlags + ", kind=" + kind
             + ", planeOffset=" + planeOffset + ", parentPortalKey=" + parentPortalKey + ", targetIdentity=" + targetIdentity + ", nested=" + nested + "]";
+    }
+
+    private double column(double x, double y, double z) {
+        return switch (facingDirection().axisIndex()) {
+            case 0 -> z - originZ;
+            default -> x - originX;
+        };
+    }
+
+    private double row(double x, double y, double z) {
+        return switch (facingDirection().axisIndex()) {
+            case 1 -> z - originZ;
+            default -> y - originY;
+        };
+    }
+
+    private static int columnAxis(int normalAxis) {
+        return normalAxis == 0 ? 2 : 0;
+    }
+
+    private static int rowAxis(int normalAxis) {
+        return normalAxis == 1 ? 2 : 1;
     }
 
     private static int quarterTurnsFrom(Frame canonical, Frame frame) {
@@ -371,6 +443,7 @@ public record ApertureDescriptor(int originX,
                          double planeOffset,
                          int parentPortalKey,
                          long targetIdentity,
+                         ShapeDescriptor shape,
                          List<ApertureDescriptor> nested) {
     }
 }

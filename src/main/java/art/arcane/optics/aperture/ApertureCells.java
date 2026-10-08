@@ -1,5 +1,6 @@
 package art.arcane.optics.aperture;
 
+import art.arcane.optics.frame.Frame;
 import art.arcane.optics.math.Vec3d;
 import art.arcane.optics.math.CellKeys;
 import art.arcane.optics.math.Box;
@@ -7,12 +8,17 @@ import art.arcane.optics.math.Face;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class ApertureCells implements CellAperture {
+    private static final Comparator<int[]> CELL_ORDER = Comparator.<int[]>comparingInt(cell -> cell[0])
+        .thenComparingInt(cell -> cell[1]).thenComparingInt(cell -> cell[2]);
+
     private final LongOpenHashSet blockKeys = new LongOpenHashSet();
     private final List<Vec3d> blockPositions = new ArrayList<>();
     private final ConcurrentHashMap<Face, List<Box>> apertureFaceCache = new ConcurrentHashMap<>();
@@ -187,20 +193,7 @@ public final class ApertureCells implements CellAperture {
 			return cached;
 		}
 
-		List<Box> faces = new ArrayList<>();
-		if(blockPositions.isEmpty() || isFullCuboid())
-		{
-			faces.add(getArea().getFace(face));
-		}
-		else
-		{
-			for(Vec3d block : blockPositions)
-			{
-				faces.add(getBlockBox(block.blockX(), block.blockY(), block.blockZ()).getFace(face));
-			}
-		}
-
-		List<Box> immutable = List.copyOf(faces);
+		List<Box> immutable = blockPositions.isEmpty() || isFullCuboid() ? List.of(getArea().getFace(face)) : mergedFaces(face);
 		List<Box> raced = apertureFaceCache.putIfAbsent(face, immutable);
 		return raced == null ? immutable : raced;
 	}
@@ -221,9 +214,95 @@ public final class ApertureCells implements CellAperture {
 		return Math.max(0, (xb - xa + 1) * (yb - ya + 1) * (zb - za + 1));
 	}
 
-	private Box getBlockBox(int x, int y, int z)
+	private List<Box> mergedFaces(Face face)
 	{
-		return new Box(x, x + 0.999D, y, y + 0.999D, z, z + 0.999D);
+		Frame canonical = Frame.canonical(face);
+		int layerAxis = face.axisIndex();
+		int columnAxis = canonical.getRight().axisIndex();
+		int rowAxis = canonical.getUp().axisIndex();
+		int[][] cells = new int[blockPositions.size()][];
+		for(int index = 0; index < cells.length; index++)
+		{
+			Vec3d block = blockPositions.get(index);
+			int[] coordinates = {block.blockX(), block.blockY(), block.blockZ()};
+			cells[index] = new int[]{coordinates[layerAxis], coordinates[rowAxis], coordinates[columnAxis]};
+		}
+		Arrays.sort(cells, CELL_ORDER);
+		List<int[]> open = new ArrayList<>();
+		List<int[]> next = new ArrayList<>();
+		List<Box> faces = new ArrayList<>();
+		int index = 0;
+		while(index < cells.length)
+		{
+			int layer = cells[index][0];
+			int row = cells[index][1];
+			next.clear();
+			while(index < cells.length && cells[index][0] == layer && cells[index][1] == row)
+			{
+				int start = cells[index][2];
+				int end = start;
+				index++;
+				while(index < cells.length && cells[index][0] == layer && cells[index][1] == row && cells[index][2] == end + 1)
+				{
+					end++;
+					index++;
+				}
+				int[] run = continued(open, layer, row, start, end);
+				next.add(run == null ? new int[]{layer, row, row, start, end} : new int[]{layer, run[1], row, start, end});
+			}
+			for(int[] run : open)
+			{
+				if(!(run[0] == layer && run[2] == row - 1 && continues(next, run)))
+				{
+					faces.add(faceBox(face, layerAxis, rowAxis, columnAxis, run));
+				}
+			}
+			List<int[]> swap = open;
+			open = next;
+			next = swap;
+		}
+		for(int[] run : open)
+		{
+			faces.add(faceBox(face, layerAxis, rowAxis, columnAxis, run));
+		}
+		return List.copyOf(faces);
+	}
+
+	private static int[] continued(List<int[]> open, int layer, int row, int start, int end)
+	{
+		for(int[] run : open)
+		{
+			if(run[0] == layer && run[2] == row - 1 && run[3] == start && run[4] == end)
+			{
+				return run;
+			}
+		}
+		return null;
+	}
+
+	private static boolean continues(List<int[]> next, int[] run)
+	{
+		for(int[] candidate : next)
+		{
+			if(candidate[1] == run[1] && candidate[3] == run[3] && candidate[4] == run[4])
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static Box faceBox(Face face, int layerAxis, int rowAxis, int columnAxis, int[] run)
+	{
+		double[] min = new double[3];
+		double[] max = new double[3];
+		min[layerAxis] = run[0];
+		max[layerAxis] = run[0] + 0.999D;
+		min[rowAxis] = run[1];
+		max[rowAxis] = run[2] + 0.999D;
+		min[columnAxis] = run[3];
+		max[columnAxis] = run[4] + 0.999D;
+		return new Box(min[0], max[0], min[1], max[1], min[2], max[2]).getFace(face);
 	}
 
 }

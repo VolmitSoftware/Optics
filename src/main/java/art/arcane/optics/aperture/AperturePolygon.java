@@ -3,6 +3,9 @@ package art.arcane.optics.aperture;
 import art.arcane.optics.frame.Frame;
 import art.arcane.optics.math.Face;
 import art.arcane.optics.math.Vec3d;
+import art.arcane.optics.shape.PlaneShape;
+import art.arcane.optics.shape.ShapeMesh;
+import art.arcane.optics.shape.ShapeRaster;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 
 import java.util.ArrayList;
@@ -10,6 +13,11 @@ import java.util.List;
 import java.util.Objects;
 
 public final class AperturePolygon {
+    private static final int MAX_MESH_SUBDIVISIONS = 16;
+
+    private final ApertureDescriptor geometry;
+    private final boolean shaped;
+    private final ShapeMesh[] meshes = new ShapeMesh[MAX_MESH_SUBDIVISIONS + 1];
     private final int[] origin;
     private final int normalAxis;
     private final double planeCoordinate;
@@ -21,8 +29,11 @@ public final class AperturePolygon {
     private final boolean reverseWinding;
     private final Plane plane;
     private final List<Rectangle> rectangles;
+    private PlaneShape planeShape;
 
     private AperturePolygon(ApertureDescriptor geometry) {
+        this.geometry = geometry;
+        shaped = !geometry.shape().isFull();
         origin = new int[]{geometry.originX(), geometry.originY(), geometry.originZ()};
         Face normal = geometry.facingDirection();
         Frame canonical = Frame.canonical(normal);
@@ -71,7 +82,35 @@ public final class AperturePolygon {
 
     public boolean contains(double column, double row) {
         return Double.isFinite(column) && Double.isFinite(row) && column >= 0 && row >= 0 && column < width && row < height
-            && open((int) column, (int) row);
+            && open((int) column, (int) row) && (!shaped || planeShape().contains(column, row));
+    }
+
+    public PlaneShape planeShape() {
+        PlaneShape plane = planeShape;
+        if (plane == null) {
+            plane = geometry.planeShape();
+            if (shaped) {
+                plane.raster(ShapeRaster.DEFAULT_SUBSAMPLES);
+            }
+            planeShape = plane;
+        }
+        return plane;
+    }
+
+    public ShapeMesh mesh(int subdivisions) {
+        if (subdivisions < 1 || subdivisions > MAX_MESH_SUBDIVISIONS) {
+            throw new IllegalArgumentException("Mesh subdivisions must be in 1.." + MAX_MESH_SUBDIVISIONS + ", got " + subdivisions);
+        }
+        ShapeMesh mesh = meshes[subdivisions];
+        if (mesh == null) {
+            mesh = planeShape().mesh(subdivisions, mask);
+            meshes[subdivisions] = mesh;
+        }
+        return mesh;
+    }
+
+    public boolean hasShape() {
+        return shaped;
     }
 
     public List<Vec3d> vertices(Rectangle rectangle) {

@@ -1,5 +1,6 @@
 package art.arcane.optics.aperture;
 
+import art.arcane.optics.shape.ShapeDescriptor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.List;
@@ -68,7 +69,7 @@ final class ApertureMirrorTransformTest {
         aperture.setArea(area);
         ApertureDescriptor.Source source = new ApertureDescriptor.Source(aperture, Frame.canonical(normal), true, true, 0, 2.0D,
             0.75D, 0.2D, 16, 1, ApertureDescriptor.BLACKOUT_OFF, 0, ApertureDescriptor.MASK_AIR_PROJECT,
-            BlockClaim.LightingPolicy.LOCAL, 0, 0, 0.0D, 0, 0L, List.of());
+            BlockClaim.LightingPolicy.LOCAL, 0, 0, 0.0D, 0, 0L, ShapeDescriptor.FULL, List.of());
         return ApertureDescriptor.fromPortal(source).orElseThrow();
     }
 }

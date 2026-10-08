@@ -1,5 +1,6 @@
 package art.arcane.optics.stream;
 
+import art.arcane.optics.shape.ShapeDescriptor;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -56,7 +57,7 @@ final class SessionPortal {
         boolean[] open = new boolean[9];
         Arrays.fill(open, true);
         return new ApertureDescriptor(10 + offsetX, 66, 20, Face.S.ordinal(), frontSide, 0, mirror, 3, 3,
-            ApertureDescriptor.apertureMask(3, 3, open), 2.0F, 0.75F, 0.2F, 24, recursionDepth, ApertureDescriptor.BLACKOUT_SHELL,
+            ApertureDescriptor.apertureMask(3, 3, open), ShapeDescriptor.FULL, 2.0F, 0.75F, 0.2F, 24, recursionDepth, ApertureDescriptor.BLACKOUT_SHELL,
             palette.id(BLACKOUT), ApertureDescriptor.MASK_AIR_PROJECT, 0, 0, 0, 0.0D, 0, 0L, List.of());
     }
 }

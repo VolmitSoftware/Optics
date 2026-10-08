@@ -1,5 +1,6 @@
 package art.arcane.optics.client;
 
+import art.arcane.optics.shape.ShapeDescriptor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -140,7 +141,7 @@ public final class ClientSweepScene {
         return ApertureDescriptor.fromPortal(new ApertureDescriptor.Source(aperture, localFrame, frontSide, false, 0,
             NEAR_PLANE_PADDING, APERTURE_PADDING, CULLING_RATIO, depth, 0, blackoutPolicy, ClientSweepPalette.BLACKOUT_ID,
             ApertureDescriptor.MASK_AIR_PROJECT, BlockClaim.LightingPolicy.SOURCE, 0, 1, 0.0D, 0, 0L,
-            List.of())).orElseThrow();
+            ShapeDescriptor.FULL, List.of())).orElseThrow();
     }
 
     BlockBox bounds(boolean frontSide) {

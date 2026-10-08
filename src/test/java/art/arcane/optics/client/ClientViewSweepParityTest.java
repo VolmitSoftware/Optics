@@ -1,5 +1,6 @@
 package art.arcane.optics.client;
 
+import art.arcane.optics.shape.ShapeDescriptor;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -44,7 +45,7 @@ final class ClientViewSweepParityTest {
                             ApertureDescriptor geometry = ApertureDescriptor.fromPortal(new ApertureDescriptor.Source(aperture,
                                 frame, front, false, 0, 2.0D, padding, 0.2D, 8, 0, ApertureDescriptor.BLACKOUT_OFF, 0,
                                 ApertureDescriptor.MASK_AIR_PROJECT, BlockClaim.LightingPolicy.LOCAL, 0,
-                                0, 0.0D, 0, 0L, List.of())).orElseThrow();
+                                0, 0.0D, 0, 0L, ShapeDescriptor.FULL, List.of())).orElseThrow();
                             BlockBox bounds = new BlockBox(-31, -34, -29, 25, 25, 25);
                             ClientSweep sweep = new ClientSweep(geometry, bounds, hysteresis);
                             LongOpenHashSet previous = new LongOpenHashSet();

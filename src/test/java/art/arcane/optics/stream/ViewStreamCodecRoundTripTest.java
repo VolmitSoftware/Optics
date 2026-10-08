@@ -15,9 +15,15 @@ import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import art.arcane.optics.aperture.ApertureDescriptor;
 import art.arcane.optics.math.BlockBox;
+import art.arcane.optics.shape.FitMode;
+import art.arcane.optics.shape.ShapeDescriptor;
+import art.arcane.optics.shape.Shapes;
 
 final class ViewStreamCodecRoundTripTest {
+    private static final int SHAPE_LENGTH_OFFSET = 29;
+
     @Test
     void malformedEntityEventsThrowProtocolErrors() throws ViewStreamProtocolException {
         byte[] swing = ViewStreamFixtures.CODEC.encodeS2C(new ViewStreamMessage.EntityEvent(7, 3, new UUID(12, 34), false, 3, 0), 0, 0);
@@ -171,6 +177,50 @@ final class ViewStreamCodecRoundTripTest {
         String tooLong = "x".repeat(ViewStreamLimits.MAX_STRING_BYTES + 1);
         ViewStreamMessage.Hello hello = new ViewStreamMessage.Hello(1, 1, 0L, ViewStreamLimits.DEFAULT_MAX_FRAME_BYTES, 1, 0L, tooLong);
         assertThrows(ViewStreamProtocolException.class, () -> ViewStreamFixtures.CODEC.encodeC2S(hello));
+    }
+
+    @Test
+    void apertureShapesRoundTripAndFullShapesCostOneByte() throws ViewStreamProtocolException {
+        ApertureDescriptor base = ViewStreamFixtures.geometry(List.of());
+        List<ShapeDescriptor> shapes = List.of(ShapeDescriptor.FULL, ShapeDescriptor.parse("flower(petals=7,depth=0.7)@rotate(15)"),
+            ShapeDescriptor.parse("polygon(points=0:1;-1:-1;1:-1)@fit(stretch)"), ShapeDescriptor.parse("(circle-ring)&star@fit(cover)"));
+        for (ShapeDescriptor shape : shapes) {
+            ApertureDescriptor geometry = base.withShape(shape);
+            ViewStreamMessage.Portal portal = new ViewStreamMessage.Portal(7, 2, geometry);
+            ViewStreamMessage decoded = ViewStreamFixtures.CODEC.decodeS2C(ViewStreamFixtures.CODEC.encodeS2C(portal, 3, 0),
+                ViewStreamCapability.ALL).message();
+            assertEquals(portal, decoded, shape.format());
+            assertEquals(shape, ((ViewStreamMessage.Portal) decoded).geometry().shape());
+        }
+        ViewStreamWriter full = new ViewStreamWriter();
+        ViewStreamCodec.writeGeometry(full, base.withShape(ShapeDescriptor.FULL), 0);
+        ViewStreamWriter circle = new ViewStreamWriter();
+        ViewStreamCodec.writeGeometry(circle, base.withShape(ShapeDescriptor.of(Shapes.circle(1.0D), FitMode.CONTAIN)), 0);
+        assertEquals(full.size() + 10, circle.size());
+        assertEquals(0, full.toByteArray()[SHAPE_LENGTH_OFFSET]);
+        assertEquals(10, circle.toByteArray()[SHAPE_LENGTH_OFFSET]);
+    }
+
+    @Test
+    void oversizedOrMalformedShapesAreProtocolErrors() throws ViewStreamProtocolException {
+        ViewStreamWriter writer = new ViewStreamWriter();
+        ViewStreamCodec.writeGeometry(writer, ViewStreamFixtures.geometry(List.of()), 0);
+        byte[] geometry = writer.toByteArray();
+        ViewStreamWriter oversized = new ViewStreamWriter();
+        oversized.bytes(geometry, 0, SHAPE_LENGTH_OFFSET);
+        oversized.varint(ViewStreamLimits.MAX_SHAPE_BYTES + 1);
+        oversized.bytes(new byte[ViewStreamLimits.MAX_SHAPE_BYTES + 1]);
+        oversized.bytes(geometry, SHAPE_LENGTH_OFFSET + 11, geometry.length - SHAPE_LENGTH_OFFSET - 11);
+        assertThrows(ViewStreamProtocolException.class, () -> ViewStreamCodec.readGeometry(new ViewStreamReader(oversized.toByteArray()), 0));
+        byte[] unknownKind = geometry.clone();
+        unknownKind[SHAPE_LENGTH_OFFSET + 2] = 16;
+        assertThrows(ViewStreamProtocolException.class, () -> ViewStreamCodec.readGeometry(new ViewStreamReader(unknownKind), 0));
+        byte[] negativeRadius = geometry.clone();
+        negativeRadius[SHAPE_LENGTH_OFFSET + 6] = (byte) 0xBF;
+        assertThrows(ViewStreamProtocolException.class, () -> ViewStreamCodec.readGeometry(new ViewStreamReader(negativeRadius), 0));
+        byte[] truncated = Arrays.copyOf(geometry, SHAPE_LENGTH_OFFSET + 5);
+        assertThrows(ViewStreamProtocolException.class, () -> ViewStreamCodec.readGeometry(new ViewStreamReader(truncated), 0));
+        assertEquals(ViewStreamFixtures.geometry(List.of()), ViewStreamCodec.readGeometry(new ViewStreamReader(geometry), 0));
     }
 
     @Test
