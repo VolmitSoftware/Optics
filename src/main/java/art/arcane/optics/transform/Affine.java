@@ -5,6 +5,7 @@ import java.util.Objects;
 import art.arcane.optics.frame.AxisPermutation;
 import art.arcane.optics.frame.Frame;
 import art.arcane.optics.frame.OpticTransform;
+import art.arcane.optics.frame.Similarity;
 import art.arcane.optics.math.Axis;
 import art.arcane.optics.math.Box;
 import art.arcane.optics.math.Face;
@@ -123,6 +124,19 @@ public final class Affine {
         Face imageZ = permutation.z();
         return new Affine(imageX.x(), imageY.x(), imageZ.x(), rigid.translationX(), imageX.y(), imageY.y(), imageZ.y(), rigid.translationY(),
             imageX.z(), imageY.z(), imageZ.z(), rigid.translationZ());
+    }
+
+    public static Affine of(Similarity similarity) {
+        AxisPermutation permutation = similarity.rigid().permutation();
+        double scale = similarity.scale();
+        Face imageX = permutation.x();
+        Face imageY = permutation.y();
+        Face imageZ = permutation.z();
+        double[] translation = new double[3];
+        similarity.pointInto(0.0D, 0.0D, 0.0D, translation);
+        return new Affine(imageX.x() * scale, imageY.x() * scale, imageZ.x() * scale, translation[0],
+            imageX.y() * scale, imageY.y() * scale, imageZ.y() * scale, translation[1],
+            imageX.z() * scale, imageY.z() * scale, imageZ.z() * scale, translation[2]);
     }
 
     public static Affine trs(Vec3d translation, Quaternion rotation, Vec3d scale) {
