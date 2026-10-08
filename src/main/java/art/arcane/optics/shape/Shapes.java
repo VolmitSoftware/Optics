@@ -3,6 +3,7 @@ package art.arcane.optics.shape;
 import java.util.List;
 
 import art.arcane.optics.internal.shape.ShapeGrammar;
+import art.arcane.optics.math.Vec2d;
 
 public final class Shapes {
     public static final Shape FULL = new Rectangle(2.0D, 2.0D);
@@ -52,6 +53,10 @@ public final class Shapes {
 
     public static Shape polygon(double... uv) {
         return new Polygon(uv);
+    }
+
+    public static Shape polygon(List<Vec2d> points) {
+        return Polygon.of(points);
     }
 
     public static Shape spline(double... uv) {

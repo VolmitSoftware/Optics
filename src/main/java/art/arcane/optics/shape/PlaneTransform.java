@@ -1,5 +1,7 @@
 package art.arcane.optics.shape;
 
+import art.arcane.optics.math.Vec2d;
+
 public record PlaneTransform(double a, double b, double c, double d, double tu, double tv) {
     public static final PlaneTransform IDENTITY = new PlaneTransform(1.0D, 0.0D, 0.0D, 1.0D, 0.0D, 0.0D);
     private static final double SINGULAR = 1.0E-12D;
@@ -107,6 +109,12 @@ public record PlaneTransform(double a, double b, double c, double d, double tu, 
 
     public double rotationDegrees() {
         return Math.toDegrees(StrictMath.atan2(c, a));
+    }
+
+    public Vec2d point(Vec2d point) {
+        double u = point.u();
+        double v = point.v();
+        return new Vec2d(a * u + b * v + tu, c * u + d * v + tv);
     }
 
     public void pointInto(double u, double v, double[] out2) {

@@ -5,12 +5,24 @@ import java.util.List;
 import java.util.Objects;
 
 import art.arcane.optics.internal.shape.PolylineDistance;
+import art.arcane.optics.math.Vec2d;
 
 public record Polygon(double[] points) implements Shape {
     static final int MAX_POINTS = 512;
 
     public Polygon {
         points = ShapeMath.pointPairs(Objects.requireNonNull(points, "points"), 3, MAX_POINTS, "Polygon");
+    }
+
+    public static Polygon of(List<Vec2d> points) {
+        Objects.requireNonNull(points, "points");
+        double[] pairs = new double[points.size() * 2];
+        for (int index = 0; index < points.size(); index++) {
+            Vec2d point = points.get(index);
+            pairs[index * 2] = point.u();
+            pairs[index * 2 + 1] = point.v();
+        }
+        return new Polygon(pairs);
     }
 
     @Override

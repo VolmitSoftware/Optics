@@ -3,6 +3,8 @@ package art.arcane.optics.animation;
 import art.arcane.optics.math.Rgba;
 import art.arcane.optics.math.Vec2d;
 import art.arcane.optics.math.Vec3d;
+import art.arcane.optics.shape.PlaneTransform;
+import art.arcane.optics.shape.ShapeDescriptor;
 import art.arcane.optics.transform.Affine;
 import art.arcane.optics.transform.Quaternion;
 
@@ -36,6 +38,14 @@ public final class Interpolators {
 
     public static Interpolator<Rgba> colorsHsv() {
         return Rgba::lerpHsv;
+    }
+
+    public static Interpolator<PlaneTransform> planeTransforms() {
+        return PlaneTransform::lerp;
+    }
+
+    public static Interpolator<ShapeDescriptor> shapes() {
+        return ShapeInterpolation::interpolate;
     }
 
     public static <T> Interpolator<T> step() {
