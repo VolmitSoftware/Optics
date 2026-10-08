@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 import art.arcane.optics.frame.OpticTransform;
 
 public record EnvironmentState(long gameTime, Sky sky, Fog fog, Lighting lighting, Clouds clouds,
-                                    OpticTransform transform, Dimension dimension, World world) {
+                                    OpticTransform transform, Dimension dimension, World world, float scale) {
     private static final Pattern DIMENSION_KEY = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 
     public EnvironmentState {
@@ -17,10 +17,17 @@ public record EnvironmentState(long gameTime, Sky sky, Fog fog, Lighting lightin
         Objects.requireNonNull(transform, "transform");
         Objects.requireNonNull(dimension, "dimension");
         Objects.requireNonNull(world, "world");
+        if (!Float.isFinite(scale) || scale <= 0.0F) {
+            throw new IllegalArgumentException("Environment scale must be finite and positive");
+        }
     }
 
     public EnvironmentState withTransform(OpticTransform value) {
-        return new EnvironmentState(gameTime, sky, fog, lighting, clouds, value, dimension, world);
+        return new EnvironmentState(gameTime, sky, fog, lighting, clouds, value, dimension, world, scale);
+    }
+
+    public EnvironmentState withScale(float value) {
+        return new EnvironmentState(gameTime, sky, fog, lighting, clouds, transform, dimension, world, value);
     }
 
     private static void finite(float... values) {

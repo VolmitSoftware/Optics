@@ -39,6 +39,7 @@ public final class EnvironmentStateCodec {
         rgba(out, value.clouds().color());
         out.f32(value.clouds().height());
         writeTransform(out, value.transform());
+        out.f32(value.scale());
         EnvironmentState.Dimension dimension = value.dimension();
         out.i32(dimension.minY());
         out.i32(dimension.height());
@@ -69,11 +70,12 @@ public final class EnvironmentStateCodec {
             EnvironmentState.Lighting lighting = new EnvironmentState.Lighting(rgb(in), in.f32(), rgb(in), rgb(in));
             EnvironmentState.Clouds clouds = new EnvironmentState.Clouds(rgba(in), in.f32());
             OpticTransform transform = readTransform(in);
+            float scale = in.f32();
             EnvironmentState.Dimension dimension = new EnvironmentState.Dimension(in.i32(), in.i32(), bool(in),
                 enumValue(EnvironmentState.CardinalLighting.values(), in.u8()), in.f64(), bool(in));
             EnvironmentState.World world = new EnvironmentState.World(in.string(), in.i64(), in.string(), in.i32(), in.u8(), in.u8(), in.i32(), bool(in), in.f32(),
                 enumValue(EnvironmentState.EyeMedium.values(), in.u8()), bool(in));
-            return new EnvironmentState(gameTime, sky, fog, lighting, clouds, transform, dimension, world);
+            return new EnvironmentState(gameTime, sky, fog, lighting, clouds, transform, dimension, world, scale);
         } catch (IllegalArgumentException exception) {
             throw new ViewStreamProtocolException("Invalid destination environment", exception);
         }

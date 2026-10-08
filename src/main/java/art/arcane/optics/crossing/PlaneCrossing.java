@@ -5,6 +5,7 @@ import art.arcane.optics.math.Face;
 import art.arcane.optics.frame.Frame;
 import art.arcane.optics.frame.OpticTransform;
 import art.arcane.optics.frame.AxisPermutation;
+import art.arcane.optics.frame.Similarity;
 
 public record PlaneCrossing(Frame frame, Vec3d origin, Vec3d point,
                              Vec3d velocity, Vec3d look, boolean frontSide) {
@@ -47,6 +48,10 @@ public record PlaneCrossing(Frame frame, Vec3d origin, Vec3d point,
 
     public OpticTransform toward(Frame destination, Vec3d destinationOrigin) {
         return OpticTransform.between(frame, origin, destination.view(frontSide), destinationOrigin);
+    }
+
+    public Similarity toward(Frame destination, Vec3d destinationOrigin, double scale) {
+        return Similarity.between(frame, origin, destination.view(frontSide), destinationOrigin, scale);
     }
 
     public Vec3d outPoint(Frame destination, Vec3d destinationOrigin) {

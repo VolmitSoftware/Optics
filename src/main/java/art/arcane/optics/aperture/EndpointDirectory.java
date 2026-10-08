@@ -21,4 +21,8 @@ public interface EndpointDirectory<W, P extends Endpoint> {
     QuarterTurn mirrorTurns(P endpoint);
 
     P destination(P endpoint);
+
+    default double travelScale(P endpoint) {
+        return 1.0D;
+    }
 }

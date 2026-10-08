@@ -3,6 +3,7 @@ package art.arcane.optics.crossing;
 import art.arcane.optics.aperture.Aperture;
 import art.arcane.optics.frame.Frame;
 import art.arcane.optics.frame.OpticTransform;
+import art.arcane.optics.frame.Similarity;
 import art.arcane.optics.math.Box;
 import art.arcane.optics.math.Face;
 import art.arcane.optics.math.Vec3d;
@@ -50,6 +51,21 @@ public final class StraddleGeometry {
         double[] out = new double[3];
         toward.permutation().inverse().vectorInto(move.x(), move.y(), move.z(), out);
         return new Vec3d(out[0], out[1], out[2]);
+    }
+
+    public static Box mappedBox(Box box, Similarity toward) {
+        return toward.box(box);
+    }
+
+    public static Vec3d mappedMove(Vec3d move, Similarity toward) {
+        return toward.vector(move);
+    }
+
+    public static Vec3d unmappedMove(Vec3d move, Similarity toward) {
+        double[] out = new double[3];
+        toward.rigid().permutation().inverse().vectorInto(move.x(), move.y(), move.z(), out);
+        double scale = toward.scale();
+        return new Vec3d(out[0] / scale, out[1] / scale, out[2] / scale);
     }
 
     private static Box withAxis(Box box, int axis, double low, double high) {

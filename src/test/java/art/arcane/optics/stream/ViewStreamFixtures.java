@@ -99,7 +99,8 @@ final class ViewStreamFixtures {
             new EnvironmentState.Lighting(color, 0.75F, color, color), new EnvironmentState.Clouds(alpha, 192.0F),
             OpticTransform.of(AxisPermutation.of(Face.N, Face.U, Face.E), -128.5D, 96.0D, 33.25D),
             new EnvironmentState.Dimension(-64, 384, true, EnvironmentState.CardinalLighting.DEFAULT, 63.0D, false),
-            new EnvironmentState.World("test:destination", 72000L, "minecraft:plains", 63, 7, 15, 256, true, 0.1F, EnvironmentState.EyeMedium.WATER, true));
+            new EnvironmentState.World("test:destination", 72000L, "minecraft:plains", 63, 7, 15, 256, true, 0.1F, EnvironmentState.EyeMedium.WATER, true),
+            0.5F);
     }
 
     static ViewStreamMessage.Offer offer() {

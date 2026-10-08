@@ -3,7 +3,7 @@ package art.arcane.optics.frame;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 
-import art.arcane.optics.math.Angles;
+import art.arcane.optics.crossing.LookTransfer;
 import art.arcane.optics.math.Angles.Look;
 import art.arcane.optics.math.Axis;
 import art.arcane.optics.math.Box;
@@ -81,6 +81,10 @@ public final class OpticTransform {
         return new OpticTransform(AxisPermutation.mirror(plane, turns), origin.x(), origin.y(), origin.z(), origin.x(), origin.y(), origin.z());
     }
 
+    static OpticTransform anchored(AxisPermutation permutation, Vec3d from, Vec3d to) {
+        return new OpticTransform(permutation, from.x(), from.y(), from.z(), to.x(), to.y(), to.z());
+    }
+
     public static OpticTransform decode(byte[] bytes) {
         if (bytes == null || bytes.length != ENCODED_BYTES) {
             throw new IllegalArgumentException("Optic transform encoding must be " + ENCODED_BYTES + " bytes");
@@ -134,6 +138,14 @@ public final class OpticTransform {
 
     public double snapTolerance() {
         return snapTolerance;
+    }
+
+    Vec3d sourceAnchor() {
+        return new Vec3d(fromX, fromY, fromZ);
+    }
+
+    Vec3d targetAnchor() {
+        return new Vec3d(toX, toY, toZ);
     }
 
     public OpticTransform compose(OpticTransform inner) {
@@ -289,20 +301,11 @@ public final class OpticTransform {
     }
 
     public float yaw(float yaw) {
-        double radians = Math.toRadians(yaw);
-        double x = -Math.sin(radians);
-        double z = Math.cos(radians);
-        return Angles.yaw(signX * Axis.component(sourceX, x, 0.0D, z), signZ * Axis.component(sourceZ, x, 0.0D, z));
+        return LookTransfer.of(new Look(yaw, 0.0F), permutation).yaw();
     }
 
     public Look look(Look look) {
-        double[] direction = new double[3];
-        Angles.directionInto(look.yaw(), look.pitch(), direction);
-        double x = direction[0];
-        double y = direction[1];
-        double z = direction[2];
-        return Angles.look(signX * Axis.component(sourceX, x, y, z), signY * Axis.component(sourceY, x, y, z),
-            signZ * Axis.component(sourceZ, x, y, z));
+        return LookTransfer.of(look, permutation).look();
     }
 
     public byte[] encode() {
