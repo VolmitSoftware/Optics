@@ -25,6 +25,13 @@ public final class PoseTransform {
             transform.vector(pose.velocity()), new Rotation(transform.rigid().permutation()));
     }
 
+    public static Pose orient(Pose pose, AxisPermutation rotation) {
+        if (rotation == AxisPermutation.IDENTITY) {
+            return pose;
+        }
+        return mapped(pose, pose.position(), pose.previousPosition(), pose.oldPosition(), pose.velocity(), new Rotation(rotation));
+    }
+
     public static Pose arrive(Pose source, PlaneCrossing crossing, Similarity toward, Frame exitFrame, OrientationRule orientation,
                               boolean gravityFlip, MomentumRule momentum, double maxSpeed) {
         return mapped(source, toward.point(source.position()), toward.point(source.previousPosition()), toward.point(source.oldPosition()),

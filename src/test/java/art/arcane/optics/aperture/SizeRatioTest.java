@@ -17,6 +17,31 @@ import art.arcane.optics.shape.ShapeDescriptor;
 
 final class SizeRatioTest {
     @Test
+    void percentagesExpressTheExitSizeRelativeToTheSource() {
+        SizeRatio half = SizeRatio.fromPercentage(50.0D);
+        SizeRatio doubleSize = SizeRatio.fromPercentage(200.0D);
+        assertEquals(0.5D, half.ratio(), 0.0D);
+        assertEquals(50.0D, half.percentage(), 0.0D);
+        assertTrue(half.exact());
+        assertEquals(2.0D, doubleSize.ratio(), 0.0D);
+        assertEquals(200.0D, doubleSize.percentage(), 0.0D);
+        assertTrue(doubleSize.exact());
+        assertEquals(doubleSize, half.inverse());
+        assertEquals(50.0D, doubleSize.inverse().percentage(), 0.0D);
+        assertEquals(SizeRatio.UNIT, SizeRatio.fromPercentage(100.0D));
+        assertEquals(50.0D, SizeRatio.between(Frame.canonical(Face.N), 6, 10, Frame.canonical(Face.E), 3, 5).percentage(), 0.0D);
+        assertEquals(200.0D, SizeRatio.between(Frame.canonical(Face.N), 3, 5, Frame.canonical(Face.E), 6, 10).percentage(), 0.0D);
+    }
+
+    @Test
+    void invalidPercentagesAreRejected() {
+        double[] invalid = {0.0D, -50.0D, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.MIN_VALUE};
+        for (double percentage : invalid) {
+            assertThrows(IllegalArgumentException.class, () -> SizeRatio.fromPercentage(percentage));
+        }
+    }
+
+    @Test
     void threeByThreeIntoNineByNineIsExactlyThree() {
         Frame wall = Frame.canonical(Face.N);
         SizeRatio ratio = SizeRatio.between(wall, 3, 3, Frame.canonical(Face.E), 9, 9);

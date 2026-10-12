@@ -34,6 +34,9 @@ public record ScaleRule(Mode mode, double min, double max) {
     }
 
     public double entityFactor(double currentFactor, SizeRatio ratio) {
+        if (!Double.isFinite(currentFactor) || currentFactor <= 0.0D) {
+            throw new IllegalArgumentException("Current entity scale must be finite and positive: " + currentFactor);
+        }
         if (mode != Mode.RATIO) {
             return currentFactor;
         }

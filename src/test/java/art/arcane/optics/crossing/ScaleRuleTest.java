@@ -61,4 +61,15 @@ final class ScaleRuleTest {
         assertThrows(IllegalArgumentException.class, () -> ScaleRule.ratio(0.5D, Double.POSITIVE_INFINITY));
         assertThrows(NullPointerException.class, () -> new ScaleRule(null, 0.5D, 2.0D));
     }
+
+    @Test
+    void everyModeRejectsInvalidCurrentEntityFactors() {
+        double[] invalid = {0.0D, -1.0D, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY};
+        for (ScaleRule.Mode mode : ScaleRule.Mode.values()) {
+            ScaleRule rule = new ScaleRule(mode, ScaleRule.ATTRIBUTE_MIN, ScaleRule.ATTRIBUTE_MAX);
+            for (double currentFactor : invalid) {
+                assertThrows(IllegalArgumentException.class, () -> rule.entityFactor(currentFactor, TRIPLE));
+            }
+        }
+    }
 }

@@ -15,6 +15,10 @@ public record SizeRatio(double ratio, boolean exact) {
         }
     }
 
+    public static SizeRatio fromPercentage(double percentage) {
+        return new SizeRatio(percentage / 100.0D, true);
+    }
+
     public static SizeRatio between(Frame from, int fromColumns, int fromRows, Frame to, int toColumns, int toRows) {
         if (fromColumns < 1 || fromRows < 1 || toColumns < 1 || toRows < 1) {
             throw new IllegalArgumentException("Aperture sizes must be positive: " + fromColumns + "x" + fromRows + " -> " + toColumns + "x" + toRows);
@@ -37,6 +41,10 @@ public record SizeRatio(double ratio, boolean exact) {
         Axis right = fromFrame.getRight().getAxis();
         Axis up = fromFrame.getUp().getAxis();
         return of(cells(toArea, map.axis(right)) / cells(fromArea, right), cells(toArea, map.axis(up)) / cells(fromArea, up));
+    }
+
+    public double percentage() {
+        return ratio * 100.0D;
     }
 
     public SizeRatio inverse() {
