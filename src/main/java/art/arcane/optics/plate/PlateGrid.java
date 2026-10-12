@@ -215,6 +215,14 @@ public final class PlateGrid<B> {
             return new PlateGrid<B>(box, cells, List.copyOf(palette), blockEntityCells, cellCount);
         }
 
+        public void put(int x, int y, int z, PlateCell<B> cell) {
+            int index = box.index(x, y, z);
+            if (index < 0) {
+                throw new IllegalArgumentException("Cell lies outside the plate grid");
+            }
+            put(index, CellKeys.pack(x, y, z), cell.kind(), cell.sourceData(), cell.data(), cell.blockEntity());
+        }
+
         private void place(int index, long localKey, char entry) {
             char previous = cells[index];
             if (previous == ABSENT) {

@@ -237,6 +237,51 @@ class EntityFramesTest {
         assertEquals(2, other.presentIds().size(), "only the observer itself is hidden");
     }
 
+    @Test
+    void recursiveObserverCopiesHaveIndependentPresenceAndDisappearNearTheVirtualEye() {
+        UUID self = UUID.randomUUID();
+        UUID pig = UUID.randomUUID();
+        UUID child = UUID.randomUUID();
+        UUID sibling = UUID.randomUUID();
+        boolean[] remote = {true};
+        List<EntitySnapshot> scene = List.of(visual(self, 10.5D, 0.0D), visual(pig, 12.5D, 0.0D));
+        EntityFrames<String> frames = new EntityFrames<String>(new EntityScenes<String>() {
+            @Override
+            public Object sceneKey(String observer, UUID portal) {
+                return portal;
+            }
+
+            @Override
+            public List<EntitySnapshot> capture(String observer, UUID portal, long tick) {
+                return scene;
+            }
+
+            @Override
+            public boolean isObserver(String observer, EntitySnapshot visual) {
+                return visual.id().equals(self);
+            }
+
+            @Override
+            public boolean observerVisible(String observer, UUID portal) {
+                return !portal.equals(PORTAL) && (!portal.equals(child) || remote[0]);
+            }
+        });
+        assertEquals(List.of(pig), frames.frame("observer", new EntityFrameTarget(PORTAL, 1, true, true), 1L).presentIds());
+        assertEquals(List.of(self, pig), frames.frame("observer", new EntityFrameTarget(child, 2, true, true), 1L).presentIds());
+        assertEquals(List.of(self, pig), frames.frame("observer", new EntityFrameTarget(sibling, 3, true, true), 1L).presentIds());
+        remote[0] = false;
+        ViewStreamMessage.EntityFrame hidden = frames.frame("observer", new EntityFrameTarget(child, 2, false, true), 2L);
+        assertNotNull(hidden);
+        assertEquals(List.of(pig), hidden.presentIds());
+        assertTrue(hidden.entities().isEmpty());
+        assertNull(frames.frame("observer", new EntityFrameTarget(sibling, 3, false, true), 2L));
+        remote[0] = true;
+        ViewStreamMessage.EntityFrame restored = frames.frame("observer", new EntityFrameTarget(child, 2, false, true), 3L);
+        assertEquals(List.of(self, pig), restored.presentIds());
+        assertEquals(self, restored.entities().getFirst().id());
+        assertTrue(restored.entities().getFirst().isFull());
+    }
+
     private static EntityScenes<String> scenes(List<EntitySnapshot> scene, AtomicInteger captures) {
         return new EntityScenes<String>() {
             @Override

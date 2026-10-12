@@ -27,6 +27,8 @@ public final class ResampleSchedule {
     private Cadence currentCadence;
     private ViewCadence currentView;
     private long projectCallCount;
+    private long currentPassTick;
+    private long lastResampleTick;
     private long entityPassCount;
     private long lastSourceViewRevision;
     private long lastResampleVersion;
@@ -53,8 +55,9 @@ public final class ResampleSchedule {
         return projectCallCount;
     }
 
-    public void beginBlockPass() {
+    public void beginBlockPass(long tick) {
         projectCallCount++;
+        currentPassTick = tick;
         currentCadence = cadence.get();
         currentView = view.get();
     }
@@ -96,6 +99,7 @@ public final class ResampleSchedule {
         boolean forced = stableResample || pendingRemoteResample;
         pendingRemoteResample = false;
         if (forced) {
+            lastResampleTick = currentPassTick;
             pendingDestinationChange = false;
             WorldChangeTracker changes = tracker.get();
             if (changes != null) {
@@ -129,13 +133,11 @@ public final class ResampleSchedule {
                 lastResampleVersion = through;
             }
         }
-        int refreshIntervalTicks = cadence().refreshIntervalTicks();
-        int backstop = stablePassInterval(fullRefreshBackstopTicks(), refreshIntervalTicks);
-        if ((projectCallCount % backstop) == 0L) {
+        long elapsedTicks = Math.max(0L, currentPassTick - lastResampleTick);
+        if (elapsedTicks >= fullRefreshBackstopTicks()) {
             return true;
         }
-        int stableCadence = stablePassInterval(stableResampleCadenceTicks(), refreshIntervalTicks);
-        return pendingDestinationChange && (projectCallCount % stableCadence) == 0L;
+        return pendingDestinationChange && elapsedTicks >= stableResampleCadenceTicks();
     }
 
     public long destinationUnaffectedThrough(UUID destWorldId, double originX, double originZ, long sinceVersion,
@@ -216,12 +218,6 @@ public final class ResampleSchedule {
             return STABLE_RESAMPLE_BACKSTOP_TICKS;
         }
         return Math.max(1, current.heartbeatTicks());
-    }
-
-    private static int stablePassInterval(int intervalTicks, int refreshIntervalTicks) {
-        int projectionInterval = Math.max(1, refreshIntervalTicks);
-        int resampleInterval = Math.max(1, intervalTicks);
-        return Math.max(1, (resampleInterval + projectionInterval - 1) / projectionInterval);
     }
 
     public record Cadence(int refreshIntervalTicks, int stableCellResampleIntervalTicks, int lightingRefreshIntervalTicks,

@@ -25,7 +25,7 @@ final class ViewStreamSlot<B> {
     ViewStreamSlot<B> standbySlot;
     EntityFrameTarget entityTarget;
 
-    volatile ApertureDescriptor geometry;
+    volatile GeometrySnapshot geometrySnapshot;
     volatile PlateTarget<B> target;
     volatile boolean needFullEntities;
     volatile boolean needFullScene;
@@ -71,11 +71,15 @@ final class ViewStreamSlot<B> {
         next.geometryStamp = geometryStamp;
         next.baseGeometry = baseGeometry;
         next.observedPlate = observedPlate;
-        next.geometry = baseGeometry;
         next.target = target;
         next.needFullEntities = true;
         next.needFullScene = true;
         return next;
+    }
+
+    ApertureDescriptor geometry() {
+        GeometrySnapshot snapshot = geometrySnapshot;
+        return snapshot == null ? null : snapshot.geometry();
     }
 
     boolean nestedChild() {
@@ -94,6 +98,9 @@ final class ViewStreamSlot<B> {
 
     boolean awaitingMiss() {
         return awaitingEncoded != null;
+    }
+
+    record GeometrySnapshot(ApertureDescriptor geometry, ViewStreamEndpoints.GeometryMetadata metadata) {
     }
 
     record PlateTarget<B>(ViewPlate<B> plate, BrickLightSource light) {

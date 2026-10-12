@@ -16,6 +16,7 @@ import art.arcane.optics.aperture.ApertureDescriptor;
 import art.arcane.optics.entity.EntitySnapshot;
 import art.arcane.optics.math.BlockBox;
 import art.arcane.optics.shape.ShapeDescriptor;
+import art.arcane.optics.transform.Affine;
 
 public final class ViewStreamCodec {
     private static final int MAX_CELL_BOX_EDGE = 65535;
@@ -42,6 +43,10 @@ public final class ViewStreamCodec {
 
     public long settle(long caps) {
         long settled = caps & ViewStreamCapability.ALL;
+        long affineRequired = ViewStreamCapability.of(ViewStreamCapability.PLATES, ViewStreamCapability.MESH_RENDER);
+        if ((settled & affineRequired) != affineRequired) {
+            settled &= ~ViewStreamCapability.AFFINE_PORTALS.mask();
+        }
         boolean changed = true;
         while (changed) {
             changed = false;
@@ -160,6 +165,9 @@ public final class ViewStreamCodec {
         ViewStreamExtension<?> extension = type == null ? owner(id) : null;
         if (type == null ? extension == null || !extension.clientbound(id) : !type.isClientbound()) {
             throw new ViewStreamProtocolException("unknown clientbound message type " + id);
+        }
+        if (type == ViewStreamMessageType.PORTAL_AFFINE && !ViewStreamCapability.AFFINE_PORTALS.in(caps)) {
+            throw new ViewStreamProtocolException("Affine portal capability was not negotiated");
         }
         int seq = header.i32();
         int flags = header.u8();
@@ -326,6 +334,33 @@ public final class ViewStreamCodec {
         out.u8(nested.size());
         for (ApertureDescriptor child : nested) {
             writeGeometry(out, child, depth + 1);
+        }
+    }
+
+    private static void writeAffine(ViewStreamWriter out, Affine transform) {
+        for (int row = 0; row < 3; row++) {
+            for (int column = 0; column < 4; column++) {
+                out.f64(transform.element(row, column));
+            }
+        }
+    }
+
+    private static Affine readAffine(ViewStreamReader in) throws ViewStreamProtocolException {
+        return Affine.of(in.f64(), in.f64(), in.f64(), in.f64(), in.f64(), in.f64(), in.f64(), in.f64(),
+            in.f64(), in.f64(), in.f64(), in.f64());
+    }
+
+    private static ViewStreamMessage.PortalAffine readPortalAffine(ViewStreamReader in) throws ViewStreamProtocolException {
+        int key = in.varint();
+        long revision = in.i64();
+        Affine aperture = readAffine(in);
+        Affine destination = readAffine(in);
+        int count = in.checkedCount(in.varint(), ViewStreamLimits.MAX_SHAPE_BYTES, 1);
+        ShapeDescriptor shape = decodeShape(in.bytes(count));
+        try {
+            return new ViewStreamMessage.PortalAffine(key, revision, aperture, destination, shape);
+        } catch (IllegalArgumentException invalid) {
+            throw new ViewStreamProtocolException("Invalid affine portal sample", invalid);
         }
     }
 
@@ -588,6 +623,15 @@ public final class ViewStreamCodec {
                 writeGeometry(out, m.geometry(), 0);
             }
             case ViewStreamMessage.PortalDrop m -> out.varint(m.portalKey());
+            case ViewStreamMessage.PortalAffine m -> {
+                out.varint(m.portalKey());
+                out.i64(m.sampleRevision());
+                writeAffine(out, m.apertureToSource());
+                writeAffine(out, m.sourceToDestination());
+                byte[] shape = m.shape().encode();
+                out.varint(shape.length);
+                out.bytes(shape);
+            }
             case ViewStreamMessage.MeshBegin m -> {
                 out.varint(m.portalKey());
                 out.i32(m.generation());
@@ -1007,6 +1051,7 @@ public final class ViewStreamCodec {
                 }
                 yield new ViewStreamMessage.EntityFrame(portalKey, seq, entities, presentIds, true);
             }
+            case PORTAL_AFFINE -> readPortalAffine(in);
             case ENVIRONMENT -> new ViewStreamMessage.Environment(in.varint(), EnvironmentStateCodec.read(in));
             case ATMOSPHERE -> new ViewStreamMessage.Atmosphere(in.varint(), in.i64(), in.f32(), in.f32(), in.u8());
             case SESSION_RESET -> {

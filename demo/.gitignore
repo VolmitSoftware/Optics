@@ -1,0 +1,6 @@
+/.gradle/
+/build/
+/.codegraph/
+/.DS_Store
+__pycache__/
+*.pyc

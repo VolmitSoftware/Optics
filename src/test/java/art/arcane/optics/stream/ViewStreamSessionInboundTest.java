@@ -9,6 +9,32 @@ import org.junit.jupiter.api.Test;
 final class ViewStreamSessionInboundTest {
     private static final long NANOS_PER_MILLI = 1_000_000L;
 
+    @Test
+    void queuedPacketsUseTheirArrivalWindowsAfterAServerStall() throws ViewStreamProtocolException {
+        SessionHarness harness = new SessionHarness(SessionHarness.options(true, 8));
+        harness.handshake(SessionHarness.CLIENT_CAPS);
+        byte[] ack = ViewStreamFixtures.CODEC.encodeC2S(new ViewStreamMessage.Ack(1, 1, 0));
+        long start = harness.clock.get() / NANOS_PER_MILLI + 1000L;
+        harness.clock.addAndGet(20_000_000_000L);
+        for (int index = 0; index < 960; index++) {
+            harness.session.receiveAt(ack, 0, ack.length, start + index / 480 * 1000L);
+        }
+        assertEquals(0L, harness.session.stats().c2sDropped());
+        assertEquals(ViewStreamSessionState.CLIENT_VIEW, harness.session.state());
+    }
+
+    @Test
+    void anActualArrivalBurstStillEnforcesTheExistingRateLimit() throws ViewStreamProtocolException {
+        SessionHarness harness = new SessionHarness(SessionHarness.options(true, 8));
+        harness.handshake(SessionHarness.CLIENT_CAPS);
+        byte[] ack = ViewStreamFixtures.CODEC.encodeC2S(new ViewStreamMessage.Ack(1, 1, 0));
+        long arrival = harness.clock.get() / NANOS_PER_MILLI + 1000L;
+        for (int index = 0; index < ViewStreamLimits.MAX_C2S_MESSAGES_PER_SECOND + 1; index++) {
+            harness.session.receiveAt(ack, 0, ack.length, arrival);
+        }
+        assertEquals(1L, harness.session.stats().c2sDropped());
+    }
+
     private static byte[] viewStats(int overlayCells) throws ViewStreamProtocolException {
         return ViewStreamFixtures.CODEC.encodeC2S(new ViewStreamMessage.ViewStats(10, 2, overlayCells, 0, 80, 120, 3));
     }

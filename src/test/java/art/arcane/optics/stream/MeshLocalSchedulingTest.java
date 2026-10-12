@@ -65,13 +65,13 @@ final class MeshLocalSchedulingTest {
             access.localWorld = true;
             access.meshChanges = new WorldChangeTracker();
             slot = new ViewStreamSlot<>(portal.id, 1, false);
-            slot.geometry = portal.geometry(new SessionPalette()).withDepth(256);
-            slot.sentGeometry = slot.geometry;
+            slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()).withDepth(256), ViewStreamEndpoints.GeometryMetadata.NONE);
+            slot.sentGeometry = slot.geometry();
             slot.announced = true;
             slot.laneAttached = true;
             coordinates = new ArrayList<>();
             UUID world = UUID.randomUUID();
-            for (MeshPlan.Section section : MeshPlan.visible(slot.geometry, eye)) {
+            for (MeshPlan.Section section : MeshPlan.visible(slot.geometry(), eye)) {
                 coordinates.add(new ViewStreamMessage.MeshCoordinate(section.x(), section.y(), section.z()));
                 access.meshPlates.put(section.clip(), PlateTestFixtures.tracked(portal.id, section.clip(), world, 0));
             }

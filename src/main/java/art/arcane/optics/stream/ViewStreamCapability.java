@@ -18,7 +18,8 @@ public enum ViewStreamCapability {
     MESH_RENDER(12),
     ENTITY_EVENTS(13),
     LOCAL_MESH(14),
-    MESH_REUSE(15);
+    MESH_REUSE(15),
+    AFFINE_PORTALS(16);
 
     public static final long NONE = 0L;
     public static final int FIRST_EXTENSION_BIT = 32;

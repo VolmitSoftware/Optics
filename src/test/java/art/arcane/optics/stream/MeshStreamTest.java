@@ -33,8 +33,8 @@ final class MeshStreamTest {
         for (int key = 1; key <= 2; key++) {
             SessionPortal portal = access.add(new SessionPortal("cached-" + key, key * 32));
             ViewStreamSlot<String> slot = new ViewStreamSlot<String>(portal.id, key, false);
-            slot.geometry = portal.geometry(new SessionPalette()).withDepth(512);
-            slot.sentGeometry = slot.geometry;
+            slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()).withDepth(512), ViewStreamEndpoints.GeometryMetadata.NONE);
+            slot.sentGeometry = slot.geometry();
             slot.announced = true;
             slot.laneAttached = true;
             slots.add(slot);
@@ -69,12 +69,12 @@ final class MeshStreamTest {
         SessionPortal blockedPortal = access.add(new SessionPortal("blocked", 0));
         SessionPortal readyPortal = access.add(new SessionPortal("ready", 0));
         ViewStreamSlot<String> blocked = new ViewStreamSlot<String>(blockedPortal.id, 1, false);
-        blocked.geometry = blockedPortal.geometry(new SessionPalette());
-        blocked.sentGeometry = blocked.geometry;
+        blocked.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(blockedPortal.geometry(new SessionPalette()), ViewStreamEndpoints.GeometryMetadata.NONE);
+        blocked.sentGeometry = blocked.geometry();
         blocked.laneAttached = true;
         ViewStreamSlot<String> root = new ViewStreamSlot<String>(readyPortal.id, 2, false);
-        root.geometry = readyPortal.geometry(new SessionPalette());
-        root.sentGeometry = root.geometry;
+        root.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(readyPortal.geometry(new SessionPalette()), ViewStreamEndpoints.GeometryMetadata.NONE);
+        root.sentGeometry = root.geometry();
         root.laneAttached = true;
         root.announced = true;
         Vec3d eye = new Vec3d(11, 67, 15);
@@ -88,7 +88,7 @@ final class MeshStreamTest {
         MeshStream.Ready<String> first = stream.poll(SessionHarness.TICK_NANOS * 2);
         assertTrue(first != null);
         assertEquals(root.key, first.slot().key);
-        assertEquals(MeshPlan.visible(root.geometry, eye).getFirst().coordinate(), first.coordinate());
+        assertEquals(MeshPlan.visible(root.geometry(), eye).getFirst().coordinate(), first.coordinate());
         acknowledge(stream, first);
         MeshStream.Ready<String> next;
         while ((next = stream.poll(SessionHarness.TICK_NANOS * 2)) != null) {
@@ -163,12 +163,12 @@ final class MeshStreamTest {
         access.meshChanges = new WorldChangeTracker();
         SessionPortal portal = access.add(new SessionPortal("dirty-refresh", 0));
         ViewStreamSlot<String> slot = new ViewStreamSlot<String>(portal.id, 1, false);
-        slot.geometry = portal.geometry(new SessionPalette()).withDepth(512);
-        slot.sentGeometry = slot.geometry;
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()).withDepth(512), ViewStreamEndpoints.GeometryMetadata.NONE);
+        slot.sentGeometry = slot.geometry();
         slot.announced = true;
         slot.laneAttached = true;
         Vec3d eye = new Vec3d(11, 67, 15);
-        List<MeshPlan.Section> visible = MeshPlan.visible(slot.geometry, eye);
+        List<MeshPlan.Section> visible = MeshPlan.visible(slot.geometry(), eye);
         MeshPlan.Section target = visible.get(targetIndex);
         BlockBox clip = target.clip();
         UUID world = UUID.randomUUID();
@@ -259,13 +259,13 @@ final class MeshStreamTest {
         FakeEndpoints access = new FakeEndpoints(new ArrayList<String>());
         SessionPortal portal = access.add(new SessionPortal("refresh", 0));
         ViewStreamSlot<String> slot = new ViewStreamSlot<String>(portal.id, 1, false);
-        slot.geometry = portal.geometry(new SessionPalette());
-        slot.sentGeometry = slot.geometry;
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()), ViewStreamEndpoints.GeometryMetadata.NONE);
+        slot.sentGeometry = slot.geometry();
         slot.announced = true;
         slot.laneAttached = true;
         MeshStream<String> stream = new MeshStream<String>();
         Vec3d eye = new Vec3d(11, 67, 15);
-        int sectionCount = MeshPlan.visible(slot.geometry, eye).size();
+        int sectionCount = MeshPlan.visible(slot.geometry(), eye).size();
         assertTrue(sectionCount > MeshStream.MAX_PENDING_CAPTURES);
 
         for (int step = 1; step <= sectionCount * 3; step++) {
@@ -286,8 +286,8 @@ final class MeshStreamTest {
         FakeEndpoints access = new FakeEndpoints(new ArrayList<String>());
         SessionPortal portal = access.add(new SessionPortal("moving-refresh", 0));
         ViewStreamSlot<String> slot = new ViewStreamSlot<String>(portal.id, 1, false);
-        slot.geometry = portal.geometry(new SessionPalette()).withDepth(512);
-        slot.sentGeometry = slot.geometry;
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()).withDepth(512), ViewStreamEndpoints.GeometryMetadata.NONE);
+        slot.sentGeometry = slot.geometry();
         slot.announced = true;
         slot.laneAttached = true;
         MeshStream<String> stream = new MeshStream<String>();
@@ -295,7 +295,7 @@ final class MeshStreamTest {
         Vec3d moved = new Vec3d(12, 67, 15);
         ArrayList<MeshPlan.Coordinate> residents = new ArrayList<MeshPlan.Coordinate>();
         Set<MeshPlan.Coordinate> movedVisible = new HashSet<MeshPlan.Coordinate>();
-        for (MeshPlan.Section section : MeshPlan.visible(slot.geometry, moved)) {
+        for (MeshPlan.Section section : MeshPlan.visible(slot.geometry(), moved)) {
             movedVisible.add(section.coordinate());
         }
         for (int step = 1; step <= 64; step++) {
@@ -335,8 +335,8 @@ final class MeshStreamTest {
         FakeEndpoints access = new FakeEndpoints(new ArrayList<String>());
         SessionPortal portal = access.add(new SessionPortal("progress", 0));
         ViewStreamSlot<String> slot = new ViewStreamSlot<String>(portal.id, 1, false);
-        slot.geometry = portal.geometry(new SessionPalette()).withDepth(208);
-        slot.sentGeometry = slot.geometry;
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()).withDepth(208), ViewStreamEndpoints.GeometryMetadata.NONE);
+        slot.sentGeometry = slot.geometry();
         slot.announced = true;
         slot.laneAttached = true;
         MeshStream<String> stream = new MeshStream<String>();
@@ -452,8 +452,8 @@ final class MeshStreamTest {
         FakeEndpoints access = new FakeEndpoints(new ArrayList<String>());
         SessionPortal portal = access.add(new SessionPortal("refresh-during-load", 0));
         ViewStreamSlot<String> slot = new ViewStreamSlot<String>(portal.id, 1, false);
-        slot.geometry = portal.geometry(new SessionPalette()).withDepth(512);
-        slot.sentGeometry = slot.geometry;
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()).withDepth(512), ViewStreamEndpoints.GeometryMetadata.NONE);
+        slot.sentGeometry = slot.geometry();
         slot.announced = true;
         slot.laneAttached = true;
         MeshStream<String> stream = new MeshStream<String>();
@@ -478,7 +478,7 @@ final class MeshStreamTest {
             }
         }
         assertTrue(refreshed);
-        assertTrue(access.meshPlates.size() < MeshPlan.visible(slot.geometry, eye).size());
+        assertTrue(access.meshPlates.size() < MeshPlan.visible(slot.geometry(), eye).size());
     }
 
     @Test
@@ -533,8 +533,8 @@ final class MeshStreamTest {
         SessionPortal portal = access.add(new SessionPortal("stable parent", 0));
         ViewStreamSlot<String> slot = new ViewStreamSlot<String>(portal.id, 1, false);
         ApertureDescriptor base = portal.geometry(new SessionPalette()).withDepth(512);
-        slot.geometry = base;
-        slot.sentGeometry = slot.geometry;
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(base, ViewStreamEndpoints.GeometryMetadata.NONE);
+        slot.sentGeometry = slot.geometry();
         slot.announced = true;
         slot.laneAttached = true;
         MeshStream<String> stream = new MeshStream<String>();
@@ -545,8 +545,8 @@ final class MeshStreamTest {
             base.withNested(List.of(first.withNested(List.of(second)), second)),
             base.withNested(List.of(second, first)), base);
         for (int index = 0; index < changes.size(); index++) {
-            slot.geometry = changes.get(index);
-            slot.sentGeometry = slot.geometry;
+            slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(changes.get(index), ViewStreamEndpoints.GeometryMetadata.NONE);
+            slot.sentGeometry = slot.geometry();
             stream.beginTick();
             stream.refresh(slot, access, "observer", 1000 + index, (1000 + index) * SessionHarness.TICK_NANOS,
                 false, new Vec3d(11, 67, 15));
@@ -557,8 +557,8 @@ final class MeshStreamTest {
                 assertFalse(control instanceof ViewStreamMessage.MeshDrop);
             }
         }
-        slot.geometry = base.withDepth(256);
-        slot.sentGeometry = slot.geometry;
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(base.withDepth(256), ViewStreamEndpoints.GeometryMetadata.NONE);
+        slot.sentGeometry = slot.geometry();
         stream.beginTick();
         stream.refresh(slot, access, "observer", 1004, 1004 * SessionHarness.TICK_NANOS,
             false, new Vec3d(11, 67, 15));
@@ -572,8 +572,8 @@ final class MeshStreamTest {
         FakeEndpoints access = new FakeEndpoints(new ArrayList<String>());
         SessionPortal portal = access.add(new SessionPortal("retention", 0));
         ViewStreamSlot<String> slot = new ViewStreamSlot<String>(portal.id, 1, false);
-        slot.geometry = portal.geometry(new SessionPalette()).withDepth(512);
-        slot.sentGeometry = slot.geometry;
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()).withDepth(512), ViewStreamEndpoints.GeometryMetadata.NONE);
+        slot.sentGeometry = slot.geometry();
         slot.announced = true;
         slot.laneAttached = true;
         MeshStream<String> stream = new MeshStream<String>();
@@ -626,8 +626,8 @@ final class MeshStreamTest {
         FakeEndpoints access = new FakeEndpoints(new ArrayList<String>());
         SessionPortal portal = access.add(new SessionPortal("deadline", 0));
         ViewStreamSlot<String> slot = new ViewStreamSlot<String>(portal.id, 1, false);
-        slot.geometry = portal.geometry(new SessionPalette()).withDepth(512);
-        slot.sentGeometry = slot.geometry;
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()).withDepth(512), ViewStreamEndpoints.GeometryMetadata.NONE);
+        slot.sentGeometry = slot.geometry();
         slot.announced = true;
         slot.laneAttached = true;
         Vec3d eye = new Vec3d(11, 67, 15);
@@ -723,7 +723,7 @@ final class MeshStreamTest {
     private static MeshStream.Ready<String> removableCapture(MeshStream<String> stream,
         ViewStreamSlot<String> slot, FakeEndpoints access) {
         Set<MeshPlan.Coordinate> moved = new HashSet<MeshPlan.Coordinate>();
-        for (MeshPlan.Section section : MeshPlan.visible(slot.geometry, new Vec3d(150, 67, 15))) {
+        for (MeshPlan.Section section : MeshPlan.visible(slot.geometry(), new Vec3d(150, 67, 15))) {
             moved.add(section.coordinate());
         }
         for (int tick = 1; tick < 1000; tick++) {

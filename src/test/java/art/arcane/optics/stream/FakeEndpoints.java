@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiFunction;
 
 import art.arcane.optics.math.Vec3d;
 import art.arcane.optics.view.WorldChangeTracker;
@@ -27,6 +28,7 @@ final class FakeEndpoints implements ViewStreamEndpoints<String, String> {
     final Set<UUID> refusalChecked = new HashSet<UUID>();
     final List<String> events;
     final Map<UUID, UUID> contexts = new HashMap<>();
+    BiFunction<UUID, GeometryMetadataContext, GeometryMetadata> metadata = (portal, context) -> GeometryMetadata.NONE;
     int meshDistance;
     WorldChangeTracker meshChanges;
     int meshCalls;
@@ -69,6 +71,11 @@ final class FakeEndpoints implements ViewStreamEndpoints<String, String> {
         geometryCalls++;
         SessionPortal known = portals.get(portal);
         return known.geometryAvailable ? known.geometry(palette) : null;
+    }
+
+    @Override
+    public GeometryMetadata geometryMetadata(String observer, UUID portal, GeometryMetadataContext context) {
+        return metadata.apply(portal, context);
     }
 
     @Override

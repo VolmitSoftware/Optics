@@ -15,6 +15,7 @@ import art.arcane.optics.aperture.ApertureDescriptor;
 import art.arcane.optics.math.BlockBox;
 import art.arcane.optics.frame.OpticTransform;
 import art.arcane.optics.frame.AxisPermutation;
+import art.arcane.optics.transform.Affine;
 
 final class ViewStreamFixtures {
     static final ViewStreamCodec CODEC = new ViewStreamCodec(List.of(TestEffects.INSTANCE));
@@ -74,6 +75,10 @@ final class ViewStreamFixtures {
             List.of(new ViewStreamMessage.MeshClaim(-32, 4, -10, 0x1122334455667788L))), ViewStreamCapability.NONE, 0, 0));
         out.add(new Vector("mesh_reuse", new ViewStreamMessage.MeshReuse(7, 12, -32, 4, -10, 2, 0x1122334455667788L), ViewStreamCapability.ALL, 16, 0));
         out.add(new Vector("environment", new ViewStreamMessage.Environment(7, environment()), ViewStreamCapability.ALL, 17, 0));
+        out.add(new Vector("portal_affine", new ViewStreamMessage.PortalAffine(7, 123L,
+            Affine.of(1.0D, 0.25D, 0.0D, 96.0D, 0.0D, 2.0D, 0.0D, 64.0D, 0.0D, 0.0D, 1.0D, 0.0D),
+            Affine.of(-1.0D, 0.0D, 0.0D, 192.0D, 0.0D, 1.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.5D, 0.0D),
+            ShapeDescriptor.FULL), ViewStreamCapability.ALL, 18, 0));
         return out;
     }
 

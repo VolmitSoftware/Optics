@@ -13,6 +13,10 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
 import java.util.Arrays;
+import java.util.BitSet;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.function.Consumer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -28,6 +32,112 @@ public final class LightOverlayIncrementalTest {
     private static final Object OBSERVER = new Object();
     private static final String DATA = "stone";
     private int sectionBudget = Integer.MAX_VALUE;
+
+    @Test
+    public void localLightRestorationRetainsEvidenceUntilSuccessfulReceipt() {
+        MutableLightView local = new MutableLightView(3, 4);
+        CountingClaims claims = new CountingClaims();
+        long cell = CellKeys.pack(1, 64, 1);
+        claims.put(cell, fullBrightClaim());
+        RecordingProjectionOutput<Object> output = new RecordingProjectionOutput<Object>();
+        LightOverlay<Object, String, MutableLightView> overlay = new LightOverlay<Object, String, MutableLightView>(output,
+            () -> null, OpticsMetrics.none());
+        List<Consumer<Boolean>> receipts = new ArrayList<Consumer<Boolean>>();
+        overlay.localLightSender((observer, light, receipt) -> {
+            output.light(observer, light);
+            receipts.add(receipt);
+        });
+        overlay.apply(OBSERVER, local, claims, LongSet.of(cell));
+        overlay.revert(OBSERVER, local);
+        assertFalse(overlay.isIdle());
+        assertEquals(1, receipts.size());
+        receipts.removeFirst().accept(false);
+        assertFalse(overlay.isIdle());
+        overlay.revert(OBSERVER, local);
+        assertEquals(1, receipts.size());
+        receipts.removeFirst().accept(true);
+        assertTrue(overlay.isIdle());
+    }
+
+    @Test
+    public void reorderedLightRestorationReceiptKeepsANewActiveOverlayAndDiscardFencesOldReceipt() {
+        MutableLightView local = new MutableLightView(3, 4);
+        CountingClaims claims = new CountingClaims();
+        long cell = CellKeys.pack(1, 64, 1);
+        claims.put(cell, fullBrightClaim());
+        RecordingProjectionOutput<Object> output = new RecordingProjectionOutput<Object>();
+        LightOverlay<Object, String, MutableLightView> overlay = new LightOverlay<Object, String, MutableLightView>(output,
+            () -> null, OpticsMetrics.none());
+        List<Consumer<Boolean>> receipts = new ArrayList<Consumer<Boolean>>();
+        overlay.localLightSender((observer, light, receipt) -> receipts.add(receipt));
+        overlay.apply(OBSERVER, local, claims, LongSet.of(cell));
+        overlay.revert(OBSERVER, local);
+        Consumer<Boolean> old = receipts.removeFirst();
+        overlay.apply(OBSERVER, local, claims, LongSet.of(cell));
+        old.accept(true);
+        assertFalse(overlay.isIdle());
+        assertTrue(overlay.hasPendingUpdates());
+        overlay.apply(OBSERVER, local, claims, LongSet.of());
+        assertEquals(15, nibble(output.lights.getLast().skyArrays()[0], 17));
+        overlay.revert(OBSERVER, local);
+        Consumer<Boolean> obsolete = receipts.removeFirst();
+        overlay.discard();
+        obsolete.accept(false);
+        assertTrue(overlay.isIdle());
+    }
+
+    @Test
+    public void standaloneLocalLightReplacementReplaysUnchangedClaimsAndRestoresReceivedBaseline() {
+        MutableLightView local = new MutableLightView(3, 4);
+        CountingClaims claims = new CountingClaims();
+        long cell = CellKeys.pack(1, 64, 1);
+        claims.put(cell, fullBrightClaim());
+        Map<Long, SectionLight> client = new HashMap<Long, SectionLight>();
+        LightOverlay<Object, String, MutableLightView> overlay = lighting(local, client);
+        overlay.apply(OBSERVER, local, claims, LongSet.of(cell));
+        BitSet mask = new BitSet();
+        mask.set(9);
+        byte[] sky = new byte[2048];
+        byte[] block = new byte[2048];
+        Arrays.fill(sky, (byte) 0x99);
+        Arrays.fill(block, (byte) 0x66);
+        overlay.refreshBaseline(new LightOverlay.ChunkLight(0, 0, mask, mask, new BitSet(), new BitSet(),
+            new byte[][] {sky}, new byte[][] {block}));
+        overlay.invalidateChunk(0, 0);
+        overlay.apply(OBSERVER, local, claims, LongSet.of(cell));
+        SectionLight projected = client.get(CellKeys.pack(0, 4, 0));
+        assertEquals(15, nibble(projected.sky, 17));
+        assertEquals(9, nibble(projected.sky, 18));
+        assertEquals(6, nibble(projected.block, 18));
+        claims.clear();
+        overlay.apply(OBSERVER, local, claims, LongSet.of(cell));
+        SectionLight restored = client.get(CellKeys.pack(0, 4, 0));
+        assertArrayEquals(sky, restored.sky);
+        assertArrayEquals(block, restored.block);
+    }
+
+    @Test
+    public void successivePartialLightBaselinesPreserveUntouchedChannels() {
+        BitSet firstMask = new BitSet();
+        firstMask.set(1);
+        BitSet nextMask = new BitSet();
+        nextMask.set(2);
+        byte[] first = new byte[2048];
+        byte[] second = new byte[2048];
+        Arrays.fill(first, (byte) 0x33);
+        Arrays.fill(second, (byte) 0x77);
+        LightOverlay.ChunkLight merged = LightOverlay.mergeBaselines(
+            new LightOverlay.ChunkLight(0, 0, firstMask, firstMask, new BitSet(), new BitSet(),
+                new byte[][] {first}, new byte[][] {first}),
+            new LightOverlay.ChunkLight(0, 0, nextMask, new BitSet(), new BitSet(), nextMask,
+                new byte[0][], new byte[][] {second}));
+        assertTrue(merged.blockMask().get(1));
+        assertTrue(merged.blockMask().get(2));
+        assertTrue(merged.emptySkyMask().get(2));
+        assertArrayEquals(first, merged.blockArrays()[0]);
+        assertArrayEquals(second, merged.blockArrays()[1]);
+        assertArrayEquals(first, merged.skyArrays()[0]);
+    }
 
     @Test
     public void sparseEditsMatchFreshRebuildAcrossDenseSectionsAndChunks() {

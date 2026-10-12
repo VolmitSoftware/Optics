@@ -21,4 +21,8 @@ public interface EntityScenes<O> {
     default boolean isObserver(O observer, EntitySnapshot visual) {
         return false;
     }
+
+    default boolean observerVisible(O observer, UUID portal) {
+        return false;
+    }
 }

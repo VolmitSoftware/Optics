@@ -160,6 +160,10 @@ public final class ViewStreamSession<O, B> {
         if (closed) {
             return false;
         }
+        if (message instanceof ViewStreamMessage.PortalAffine
+            && (!nativeRendererSelected() || !ViewStreamCapability.AFFINE_PORTALS.in(caps))) {
+            return false;
+        }
         try {
             byte[] frame = registry.codec().encodeS2C(message, sequence.getAndIncrement(), 0);
             if (frame.length > registry.options().maxFrameBytes()) {
@@ -409,10 +413,14 @@ public final class ViewStreamSession<O, B> {
     }
 
     public ViewStreamInbound receive(byte[] payload, int offset, int length) {
+        return receiveAt(payload, offset, length, millis());
+    }
+
+    public ViewStreamInbound receiveAt(byte[] payload, int offset, int length, long receivedMillis) {
         if (closed) {
             return ViewStreamInbound.IGNORED;
         }
-        long now = millis();
+        long now = receivedMillis;
         int messageType = payload != null && offset >= 0 && offset < payload.length && length > 0 ? payload[offset] & 0xFF : -1;
         ViewStreamRateLimiter.Verdict verdict = limiter.admit(now, length, messageType);
         if (verdict != ViewStreamRateLimiter.Verdict.ACCEPT) {
@@ -691,11 +699,17 @@ public final class ViewStreamSession<O, B> {
         return meshEnabled() || clientMirror(geometry) || !portals.refused(player, portal) ? geometry : null;
     }
 
+    private void publishGeometry(ViewStreamSlot<B> slot, ApertureDescriptor geometry, ViewStreamEndpoints<O, B> portals) {
+        ViewStreamEndpoints.GeometryMetadata metadata = portals.geometryMetadata(player, slot.portalId,
+            new ViewStreamEndpoints.GeometryMetadataContext(slot.key, geometry, caps));
+        slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(geometry, metadata);
+    }
+
     private void own(ViewStreamSlot<B> slot, long stamp, ApertureDescriptor geometry, ViewStreamEndpoints<O, B> portals) {
         slot.effects = false;
         slot.geometryStamp = stamp;
         slot.baseGeometry = geometry;
-        slot.geometry = geometry;
+        publishGeometry(slot, geometry, portals);
         slot.needFullEntities = true;
         slot.needFullScene = true;
         portals.releaseVanilla(player, slot.portalId);
@@ -717,7 +731,7 @@ public final class ViewStreamSession<O, B> {
                 slot.effects = true;
                 slot.geometryStamp = stamp;
                 slot.baseGeometry = geometry;
-                slot.geometry = geometry;
+                publishGeometry(slot, geometry, portals);
                 slot.needFullScene = true;
                 slots.put(portal, slot);
                 slotList.add(slot);
@@ -758,6 +772,7 @@ public final class ViewStreamSession<O, B> {
         for (int i = 0; i < slotList.size(); i++) {
             detachChildren(slotList.get(i));
             ViewStreamSlot<B> successor = slotList.get(i).successor(nextPortalKey++);
+            publishGeometry(successor, successor.baseGeometry, platform.endpoints());
             slotList.set(i, successor);
             slots.put(successor.portalId, successor);
             inbox.add(new Attach<B>(successor));
@@ -817,8 +832,8 @@ public final class ViewStreamSession<O, B> {
         int nested = refreshNested(slot, portals, options, serverTick);
         if (geometryChanged || (nested & NESTED_GEOMETRY) != 0) {
             ApertureDescriptor composed = compose(slot);
-            if (!composed.equals(slot.geometry)) {
-                slot.geometry = composed;
+            if (!composed.equals(slot.geometry())) {
+                publishGeometry(slot, composed, portals);
             }
         }
         changed |= geometryChanged || nested != 0;
@@ -853,7 +868,7 @@ public final class ViewStreamSession<O, B> {
             }
             slot.geometryStamp = stamp;
             slot.baseGeometry = geometry;
-            slot.geometry = geometry;
+            publishGeometry(slot, geometry, portals);
             changed = true;
         }
         changed |= refreshScene(slot, options, serverTick);
@@ -908,6 +923,16 @@ public final class ViewStreamSession<O, B> {
         }
         boolean fullScene = slot.needFullScene;
         if (!slot.effects && meshEnabled()) {
+            if (ViewStreamCapability.AFFINE_PORTALS.in(sessionCaps)) {
+                ViewStreamMessage.PortalAffine affine = platform.scene().affine(player, slot.portalId, slot.key, serverTick, fullScene);
+                if (affine != null) {
+                    if (affine.portalKey() != slot.key) {
+                        throw new IllegalArgumentException("Affine sample key does not match its endpoint");
+                    }
+                    inbox.add(new Scene<B>(slot, affine));
+                    queued = true;
+                }
+            }
             ViewStreamMessage.Environment environment = platform.scene().environment(player, slot.portalId, slot.key, serverTick, fullScene);
             if (environment != null) {
                 inbox.add(new Scene<B>(slot, environment));
@@ -981,7 +1006,7 @@ public final class ViewStreamSession<O, B> {
                 }
                 child.geometryStamp = stamp;
                 child.baseGeometry = geometry;
-                child.geometry = geometry.withParent(slot.key);
+                publishGeometry(child, geometry.withParent(slot.key), portals);
                 flags |= NESTED_GEOMETRY;
             }
             ViewPlate<B> plate = portals.nestedPlate(player, slot.portalId, childId);
@@ -1066,7 +1091,7 @@ public final class ViewStreamSession<O, B> {
             }
             visited.add(childId);
             if (created) {
-                child.geometry = child.baseGeometry.withParent(slot.key);
+                publishGeometry(child, child.baseGeometry.withParent(slot.key), portals);
                 slot.children.add(child);
                 inbox.add(new Attach<>(child));
             }
@@ -1074,8 +1099,8 @@ public final class ViewStreamSession<O, B> {
             int descendants = refreshNativeNested(child, portals, serverTick, depth + 1,
                 Math.min(depthLimit, depth + 1 + nativeRecursionDepth(child.baseGeometry)), childMirrors, remaining);
             ApertureDescriptor composed = compose(child).withParent(slot.key);
-            if (!composed.equals(child.geometry)) {
-                child.geometry = composed;
+            if (!composed.equals(child.geometry())) {
+                publishGeometry(child, composed, portals);
                 flags |= NESTED_GEOMETRY;
             }
             flags |= descendants;
@@ -1141,7 +1166,7 @@ public final class ViewStreamSession<O, B> {
         }
         List<ApertureDescriptor> nested = new ArrayList<ApertureDescriptor>(slot.children.size());
         for (int i = 0; i < slot.children.size(); i++) {
-            nested.add(slot.children.get(i).geometry);
+            nested.add(slot.children.get(i).geometry());
         }
         return slot.baseGeometry.withNested(nested);
     }
@@ -1262,7 +1287,8 @@ public final class ViewStreamSession<O, B> {
             }
             completeStream(slot, null, now);
         }
-        ApertureDescriptor geometry = slot.geometry;
+        ViewStreamSlot.GeometrySnapshot snapshot = slot.geometrySnapshot;
+        ApertureDescriptor geometry = snapshot == null ? null : snapshot.geometry();
         ViewStreamSlot.PlateTarget<B> target = slot.target;
         boolean geometryDue = !slot.standby && geometry != null && geometry != slot.sentGeometry;
         boolean plateDue = target != null && target.plate() != slot.sentPlate && (slot.standby || slot.announced || geometryDue);
@@ -1273,7 +1299,7 @@ public final class ViewStreamSession<O, B> {
             return false;
         }
         try {
-            stream(slot, geometryDue ? geometry : null, plateDue ? target : null, now);
+            stream(slot, geometryDue ? snapshot : null, plateDue ? target : null, now);
         } catch (ViewStreamProtocolException | IllegalArgumentException | IllegalStateException failure) {
             slot.failed = true;
             cursor.reset();
@@ -1295,8 +1321,9 @@ public final class ViewStreamSession<O, B> {
         return false;
     }
 
-    private void stream(ViewStreamSlot<B> slot, ApertureDescriptor geometry, ViewStreamSlot.PlateTarget<B> target, long now)
+    private void stream(ViewStreamSlot<B> slot, ViewStreamSlot.GeometrySnapshot snapshot, ViewStreamSlot.PlateTarget<B> target, long now)
         throws ViewStreamProtocolException {
+        ApertureDescriptor geometry = snapshot == null ? null : snapshot.geometry();
         List<ViewStreamMessage> group = new ArrayList<ViewStreamMessage>(6);
         List<ViewStreamMessage.PaletteEntry> entries = new ArrayList<ViewStreamMessage.PaletteEntry>();
         int geometryRevision = slot.geometryRevision;
@@ -1304,6 +1331,7 @@ public final class ViewStreamSession<O, B> {
             entries.addAll(cursor.pending(geometryPaletteIds(geometry)));
             geometryRevision++;
             group.add(new ViewStreamMessage.Portal(slot.key, geometryRevision, geometry));
+            group.addAll(snapshot.metadata().messages(geometryRevision));
         }
         boolean close = true;
         EncodedPlate encoded = null;
@@ -1488,7 +1516,7 @@ public final class ViewStreamSession<O, B> {
     private boolean meshAnnounced(int key) {
         for (ViewStreamSlot<B> slot : laneSlots) {
             if (slot.key == key) {
-                return slot.announced && slot.sentGeometry == slot.geometry;
+                return slot.announced && slot.sentGeometry == slot.geometry();
             }
         }
         return false;

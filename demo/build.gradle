@@ -1,0 +1,50 @@
+plugins {
+    id 'java'
+}
+
+group = 'art.arcane'
+version = '0.1.0'
+
+repositories {
+    mavenCentral()
+    maven { url = uri('https://repo.papermc.io/repository/maven-public/') }
+}
+
+dependencies {
+    implementation 'art.arcane:optics:0.1.0'
+    compileOnly 'io.papermc.paper:paper-api:26.1.2.build.74-stable'
+    testImplementation 'io.papermc.paper:paper-api:26.1.2.build.74-stable'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release.set(25)
+    options.encoding = 'UTF-8'
+    options.compilerArgs.add('-parameters')
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+}
+
+tasks.named('processResources').configure {
+    inputs.property('version', project.version)
+    filesMatching('plugin.yml') {
+        expand(version: project.version)
+    }
+}
+
+tasks.named('jar').configure {
+    dependsOn(configurations.runtimeClasspath)
+    archiveBaseName.set('OpticsDemo')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from({ configurations.runtimeClasspath.collect { File archive -> archive.isDirectory() ? archive : zipTree(archive) } })
+    exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA', 'module-info.class'
+}

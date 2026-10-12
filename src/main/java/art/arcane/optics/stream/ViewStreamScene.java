@@ -3,6 +3,10 @@ package art.arcane.optics.stream;
 import java.util.UUID;
 
 public interface ViewStreamScene<O> {
+    default ViewStreamMessage.PortalAffine affine(O observer, UUID endpoint, int key, long tick, boolean full) {
+        return null;
+    }
+
     default long effectCapability() {
         return ViewStreamCapability.NONE;
     }

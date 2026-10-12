@@ -5,7 +5,9 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayDeque;
 import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -479,6 +481,132 @@ class ChunkLeaseRegistryTest {
         second.close();
         platform.runNextScheduled();
         assertEquals(1, platform.removeCalls);
+    }
+
+    @Test
+    void releasedPendingAddCancellationDoesNotReportRetryOrRestoreState() {
+        ManualPlatform platform = new ManualPlatform();
+        CompletableFuture<Boolean> add = new CompletableFuture<>();
+        platform.addResults.offer(add);
+        ChunkLeaseRegistry<TestWorld> registry = registry(platform);
+        ChunkLease lease = registry.retain(WORLD, WORLD_ID, 208, -3);
+        lease.close();
+        platform.runNextScheduled();
+
+        add.completeExceptionally(new CompletionException(new CancellationException("Unloaded chunk")));
+
+        assertFalse(lease.ready().join());
+        assertFalse(lease.isValid());
+        assertEquals(0, platform.reportedFailures);
+        assertEquals(1, platform.addCalls);
+        assertEquals(1, platform.removeCalls);
+        assertFalse(platform.hasScheduled());
+    }
+
+    @Test
+    void idlePendingAddCancellationStillRemovesTheReleasedTicket() {
+        ManualPlatform platform = new ManualPlatform();
+        CompletableFuture<Boolean> add = new CompletableFuture<>();
+        platform.addResults.offer(add);
+        ChunkLeaseRegistry<TestWorld> registry = registry(platform);
+        ChunkLease lease = registry.retain(WORLD, WORLD_ID, 208, 0);
+        lease.close();
+
+        add.completeExceptionally(new CancellationException("Unloaded chunk"));
+        platform.runNextScheduled();
+
+        assertFalse(lease.ready().join());
+        assertEquals(0, platform.reportedFailures);
+        assertEquals(1, platform.removeCalls);
+        assertFalse(platform.hasScheduled());
+    }
+
+    @Test
+    void oldCancellationDuringRemovalCannotCompleteOrInvalidateReplacementOwner() {
+        ManualPlatform platform = new ManualPlatform();
+        CompletableFuture<Boolean> oldAdd = new CompletableFuture<>();
+        CompletableFuture<Boolean> newAdd = new CompletableFuture<>();
+        CompletableFuture<Boolean> removal = new CompletableFuture<>();
+        platform.addResults.offer(oldAdd);
+        platform.addResults.offer(newAdd);
+        platform.removeResults.offer(removal);
+        ChunkLeaseRegistry<TestWorld> registry = registry(platform);
+        ChunkLease oldLease = registry.retain(WORLD, WORLD_ID, 208, 2);
+        oldLease.close();
+        platform.runNextScheduled();
+        ChunkLease replacement = registry.retain(WORLD, WORLD_ID, 208, 2);
+
+        oldAdd.completeExceptionally(new CompletionException(new CancellationException("Unloaded chunk")));
+
+        assertFalse(replacement.ready().isDone());
+        assertTrue(replacement.isValid());
+        assertEquals(0, platform.reportedFailures);
+        assertEquals(1, platform.addCalls);
+        removal.complete(true);
+        assertEquals(2, platform.addCalls);
+        assertFalse(replacement.ready().isDone());
+        newAdd.complete(true);
+        assertTrue(replacement.ready().join());
+        assertTrue(replacement.isValid());
+        assertEquals(1, platform.removeCalls);
+        assertFalse(platform.hasScheduled());
+    }
+
+    @Test
+    void activeCancellationReportsAndRetriesBeforeReadiness() {
+        ManualPlatform platform = new ManualPlatform();
+        CompletableFuture<Boolean> add = new CompletableFuture<>();
+        platform.addResults.offer(add);
+        ChunkLeaseRegistry<TestWorld> registry = registry(platform);
+        ChunkLease lease = registry.retain(WORLD, WORLD_ID, 208, 1);
+
+        add.completeExceptionally(new CompletionException(new CancellationException("Unloaded chunk")));
+
+        assertEquals(1, platform.reportedFailures);
+        assertFalse(lease.ready().isDone());
+        platform.runNextScheduled();
+        assertTrue(lease.ready().join());
+        assertTrue(lease.isValid());
+        assertEquals(2, platform.addCalls);
+    }
+
+    @Test
+    void lateGenuineFailureAfterOrdinaryReleaseStillReports() {
+        ManualPlatform platform = new ManualPlatform();
+        CompletableFuture<Boolean> add = new CompletableFuture<>();
+        platform.addResults.offer(add);
+        ChunkLeaseRegistry<TestWorld> registry = registry(platform);
+        ChunkLease lease = registry.retain(WORLD, WORLD_ID, 208, 3);
+        lease.close();
+        platform.runNextScheduled();
+
+        add.completeExceptionally(new CompletionException(new IllegalStateException("generation failed")));
+
+        assertFalse(lease.ready().join());
+        assertEquals(1, platform.reportedFailures);
+        assertEquals(1, platform.removeCalls);
+        assertFalse(platform.hasScheduled());
+    }
+
+    @Test
+    void pendingSharedOwnerKeepsCancellationAnActiveFailure() {
+        ManualPlatform platform = new ManualPlatform();
+        CompletableFuture<Boolean> add = new CompletableFuture<>();
+        platform.addResults.offer(add);
+        ChunkLeaseRegistry<TestWorld> registry = registry(platform);
+        ChunkLease released = registry.retain(WORLD, WORLD_ID, 208, -2);
+        ChunkLease remaining = registry.retain(WORLD, WORLD_ID, 208, -2);
+        released.close();
+
+        add.completeExceptionally(new CancellationException("Unloaded chunk"));
+
+        assertEquals(1, platform.reportedFailures);
+        assertFalse(remaining.ready().isDone());
+        assertEquals(0, platform.removeCalls);
+        platform.runNextScheduled();
+        assertTrue(remaining.ready().join());
+        assertFalse(released.ready().join());
+        assertEquals(0, platform.removeCalls);
     }
 
     private static ChunkLeaseRegistry<TestWorld> registry(ManualPlatform platform) {

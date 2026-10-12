@@ -16,6 +16,10 @@ public interface ViewStreamEndpoints<O, B> {
 
     ApertureDescriptor geometry(O observer, UUID portal, SessionPalette palette);
 
+    default GeometryMetadata geometryMetadata(O observer, UUID portal, GeometryMetadataContext context) {
+        return GeometryMetadata.NONE;
+    }
+
     ViewPlate<B> plate(O observer, UUID portal, boolean firstAttendance);
 
     default int meshDistanceBlocks(O observer) {
@@ -85,4 +89,14 @@ public interface ViewStreamEndpoints<O, B> {
     long effectGeometryRevision(O observer, UUID portal);
 
     ApertureDescriptor effectGeometry(O observer, UUID portal, SessionPalette palette);
+
+    @FunctionalInterface
+    interface GeometryMetadata {
+        GeometryMetadata NONE = revision -> List.of();
+
+        List<ViewStreamMessage> messages(int geometryRevision);
+    }
+
+    record GeometryMetadataContext(int portalKey, ApertureDescriptor geometry, long caps) {
+    }
 }

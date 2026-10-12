@@ -54,7 +54,7 @@ final class MeshStream<B> {
             return false;
         }
         State<B> state = states.get(slot.key);
-        ApertureDescriptor geometry = slot.geometry;
+        ApertureDescriptor geometry = slot.geometry();
         if (state == null || !state.geometry.sameSurface(geometry)) {
             remove(slot.key);
             state = new State<B>(slot, ++generation, geometry);
@@ -189,7 +189,7 @@ final class MeshStream<B> {
             if (state == null || state.generation != next.generation || entry == null || entry.revision != next.revision) {
                 continue;
             }
-            if (!state.begun || !next.slot.announced || next.slot.sentGeometry != next.slot.geometry) {
+            if (!state.begun || !next.slot.announced || next.slot.sentGeometry != next.slot.geometry()) {
                 ready.add(next);
                 continue;
             }

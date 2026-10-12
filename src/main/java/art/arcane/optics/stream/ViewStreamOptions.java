@@ -28,7 +28,7 @@ public record ViewStreamOptions(boolean enabled,
     public long serverCaps(ViewStreamPhase phase) {
         long caps = ViewStreamCapability.of(ViewStreamCapability.PLATES, ViewStreamCapability.ATMOSPHERE,
             ViewStreamCapability.LINK_UNCOMPRESSED, ViewStreamCapability.MESH_RENDER, ViewStreamCapability.LOCAL_MESH,
-            ViewStreamCapability.MESH_REUSE);
+            ViewStreamCapability.MESH_REUSE, ViewStreamCapability.AFFINE_PORTALS);
         if (brickCache) {
             caps |= ViewStreamCapability.BRICK_CACHE.mask();
         }

@@ -62,7 +62,7 @@ final class MeshLocalTest {
         ViewStreamMessage.MeshClaim claim = new ViewStreamMessage.MeshClaim(ready.coordinate().x(), ready.coordinate().y(),
             ready.coordinate().z(), 41);
         assertTrue(fixture.stream.cached(new ViewStreamMessage.MeshCached(1, fixture.begin.generation(), 1, true, List.of(claim))));
-        fixture.slot.geometry = fixture.slot.geometry.withDepth(48);
+        fixture.slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(fixture.slot.geometry().withDepth(48), ViewStreamEndpoints.GeometryMetadata.NONE);
         fixture.refresh(14);
         ViewStreamMessage.MeshBegin next = (ViewStreamMessage.MeshBegin) fixture.stream.pollControl(key -> true);
         assertTrue(next.generation() > ready.generation());
@@ -122,7 +122,7 @@ final class MeshLocalTest {
     void retractingOnlyOneLoadedSectionResumesItsRemoteCapture() {
         Fixture fixture = new Fixture(true, true);
         ViewStreamMessage.MeshCoordinate first = fixture.coordinate();
-        MeshPlan.Section second = MeshPlan.visible(fixture.slot.geometry, fixture.eye).get(1);
+        MeshPlan.Section second = MeshPlan.visible(fixture.slot.geometry(), fixture.eye).get(1);
         ViewStreamMessage.MeshCoordinate retained = new ViewStreamMessage.MeshCoordinate(second.x(), second.y(), second.z());
         assertTrue(fixture.stream.local(new ViewStreamMessage.MeshLocal(1, fixture.begin.generation(), 1, true,
             List.of(first, retained), List.of())));
@@ -179,7 +179,7 @@ final class MeshLocalTest {
         UUID id = UUID.randomUUID();
         assertTrue(fixture.stream.local(new ViewStreamMessage.MeshLocal(1, fixture.begin.generation(), 1, true,
             List.of(), List.of(id))));
-        fixture.slot.geometry = fixture.slot.geometry.withDepth(48);
+        fixture.slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(fixture.slot.geometry().withDepth(48), ViewStreamEndpoints.GeometryMetadata.NONE);
         fixture.refresh(2);
         ViewStreamMessage.MeshBegin next = (ViewStreamMessage.MeshBegin) fixture.stream.pollControl(key -> true);
         assertTrue(next.generation() > fixture.begin.generation());
@@ -212,8 +212,8 @@ final class MeshLocalTest {
             portal.mirror = mirror;
             access.localWorld = local;
             slot = new ViewStreamSlot<>(portal.id, 1, false);
-            slot.geometry = portal.geometry(new SessionPalette());
-            slot.sentGeometry = slot.geometry;
+            slot.geometrySnapshot = new ViewStreamSlot.GeometrySnapshot(portal.geometry(new SessionPalette()), ViewStreamEndpoints.GeometryMetadata.NONE);
+            slot.sentGeometry = slot.geometry();
             slot.announced = true;
             slot.laneAttached = true;
             refresh(1);
@@ -221,7 +221,7 @@ final class MeshLocalTest {
         }
 
         private ViewStreamMessage.MeshCoordinate coordinate() {
-            MeshPlan.Section section = MeshPlan.visible(slot.geometry, eye).getFirst();
+            MeshPlan.Section section = MeshPlan.visible(slot.geometry(), eye).getFirst();
             return new ViewStreamMessage.MeshCoordinate(section.x(), section.y(), section.z());
         }
 

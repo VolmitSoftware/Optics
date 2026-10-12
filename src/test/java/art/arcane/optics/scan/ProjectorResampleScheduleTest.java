@@ -26,7 +26,7 @@ class ProjectorResampleScheduleTest {
         schedule.noteSourceViewRevision(revision);
 
         for (int pass = 0; pass < 2_000; pass++) {
-            schedule.beginBlockPass();
+            schedule.beginBlockPass(schedule.passCount() + 1L);
             assertFalse(schedule.stableResample(true, revision, true, null, 0.0D, 0.0D, new RemoteFootprint()));
         }
     }
@@ -49,7 +49,7 @@ class ProjectorResampleScheduleTest {
             for (int change = 0; change < 5_000; change++) {
                 tracker.markChanged(worldId, 1_600 + (change & 63), 64, 1_600 + (change >> 6));
             }
-            schedule.beginBlockPass();
+            schedule.beginBlockPass(schedule.passCount() + 1L);
             if (schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint)) {
                 forced++;
                 schedule.consumeForcedResample(true);
@@ -57,21 +57,74 @@ class ProjectorResampleScheduleTest {
         }
         assertEquals(0, forced, "churn outside the footprint must not force cadence resamples");
 
-        schedule.beginBlockPass();
+        schedule.consumeForcedResample(true);
+        schedule.beginBlockPass(schedule.passCount() + 1L);
         tracker.markChanged(worldId, 8, 64, 8);
         long passes = schedule.passCount();
         int passesUntilForced = 0;
         while (!schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint)) {
             passesUntilForced++;
             assertTrue(passesUntilForced < 8, "a change inside the footprint must force the next cadence pass");
-            schedule.beginBlockPass();
+            schedule.beginBlockPass(schedule.passCount() + 1L);
         }
         assertEquals(0L, (passes + passesUntilForced) % 4L, "the forced resample lands on a cadence pass");
         schedule.consumeForcedResample(true);
         for (int pass = 0; pass < 12; pass++) {
-            schedule.beginBlockPass();
+            schedule.beginBlockPass(schedule.passCount() + 1L);
             assertFalse(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
         }
+    }
+
+    @Test
+    void sparseSelectionsUseElapsedTicksAndRetainDirtyChangesUntilConsumed() {
+        WorldChangeTracker tracker = new WorldChangeTracker();
+        UUID worldId = UUID.nameUUIDFromBytes("sparse-resample".getBytes(StandardCharsets.UTF_8));
+        RemoteFootprint footprint = new RemoteFootprint();
+        footprint.record(8, 64, 8);
+        ResampleSchedule schedule = new ResampleSchedule(() -> new ViewCadence(16, 60, 10, false),
+            () -> tracker, () -> CADENCE);
+        schedule.beginBlockPass(1L);
+        assertTrue(schedule.stableResample(false, 0L, false, worldId, 8.0D, 8.0D, footprint));
+        schedule.consumeForcedResample(true);
+        schedule.noteSourceViewRevision(0L);
+        tracker.markChanged(worldId, 8, 64, 8);
+
+        for (long tick : new long[] {21L, 41L, 60L}) {
+            schedule.beginBlockPass(tick);
+            assertFalse(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
+            assertTrue(schedule.destinationChangePending());
+        }
+        schedule.beginBlockPass(61L);
+        assertTrue(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
+        assertTrue(schedule.destinationChangePending());
+        schedule.consumeForcedResample(true);
+        assertFalse(schedule.destinationChangePending());
+        schedule.beginBlockPass(61L);
+        assertFalse(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
+        assertEquals(6L, schedule.passCount());
+    }
+
+    @Test
+    void irregularSelectionsRefreshAfterDeadlineWithoutModuloAlignment() {
+        WorldChangeTracker tracker = new WorldChangeTracker();
+        UUID worldId = UUID.nameUUIDFromBytes("irregular-resample".getBytes(StandardCharsets.UTF_8));
+        RemoteFootprint footprint = new RemoteFootprint();
+        footprint.record(8, 64, 8);
+        ResampleSchedule schedule = new ResampleSchedule(() -> STANDARD_VIEW, () -> tracker, () -> CADENCE);
+        schedule.beginBlockPass(7L);
+        schedule.consumeForcedResample(true);
+        schedule.noteSourceViewRevision(0L);
+        tracker.markChanged(worldId, 8, 64, 8);
+        schedule.beginBlockPass(10L);
+        assertFalse(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
+        schedule.beginBlockPass(13L);
+        assertTrue(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
+        schedule.consumeForcedResample(true);
+        tracker.markChanged(worldId, 1_600, 64, 1_600);
+        schedule.beginBlockPass(57L);
+        assertFalse(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
+        schedule.beginBlockPass(1_214L);
+        assertTrue(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
     }
 
     @Test
@@ -84,16 +137,16 @@ class ProjectorResampleScheduleTest {
         schedule.stableResample(false, 0L, false, worldId, 8.0D, 8.0D, footprint);
         schedule.consumeForcedResample(true);
         schedule.noteSourceViewRevision(0L);
-        schedule.beginBlockPass();
+        schedule.beginBlockPass(schedule.passCount() + 1L);
         assertFalse(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
         assertFalse(schedule.destinationChangePending());
 
         tracker.markChanged(worldId, 8, 64, 8);
-        schedule.beginBlockPass();
+        schedule.beginBlockPass(schedule.passCount() + 1L);
         assertFalse(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
         assertTrue(schedule.destinationChangePending(), "a change inside the footprint waits for the cadence pass");
         do {
-            schedule.beginBlockPass();
+            schedule.beginBlockPass(schedule.passCount() + 1L);
         } while (!schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
         assertTrue(schedule.destinationChangePending());
         schedule.consumeForcedResample(true);
@@ -115,12 +168,12 @@ class ProjectorResampleScheduleTest {
         tracker.markChanged(worldId, 8, 64, 8);
         int passesUntilForced = 0;
         do {
-            schedule.beginBlockPass();
+            schedule.beginBlockPass((schedule.passCount() + 1L) * 2L);
             passesUntilForced++;
         } while (!schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
         assertEquals(4, passesUntilForced, "an 8 tick cadence at a 2 tick refresh interval resamples every 4 passes");
         assertTrue(schedule.lightingUpdatePass(true), "lighting refreshes every 2 passes at a 4 tick interval");
-        schedule.beginBlockPass();
+        schedule.beginBlockPass((schedule.passCount() + 1L) * 2L);
         assertFalse(schedule.lightingUpdatePass(true));
     }
 
@@ -135,11 +188,11 @@ class ProjectorResampleScheduleTest {
         schedule.stableResample(false, 0L, false, worldId, 8.0D, 8.0D, footprint);
         schedule.consumeForcedResample(true);
         schedule.noteSourceViewRevision(0L);
-        schedule.beginBlockPass();
+        schedule.beginBlockPass(schedule.passCount() + 1L);
         assertFalse(schedule.consumeForcedResample(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint)));
 
         schedule.invalidateDestination();
-        schedule.beginBlockPass();
+        schedule.beginBlockPass(schedule.passCount() + 1L);
         assertTrue(schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint));
         assertTrue(schedule.consumeForcedResample(false));
         assertFalse(schedule.isRemoteResamplePending());
@@ -161,18 +214,18 @@ class ProjectorResampleScheduleTest {
         schedule.noteSourceViewRevision(0L);
 
         for (int pass = 0; pass < 10; pass++) {
-            schedule.beginBlockPass();
+            schedule.beginBlockPass(schedule.passCount() + 1L);
             schedule.stableResample(true, 0L, false, worldId, 8.0D, 8.0D, footprint);
             schedule.lightingUpdatePass(true);
             schedule.entityUpdateDue();
         }
         assertEquals(10, reads.get());
 
-        schedule.beginBlockPass();
+        schedule.beginBlockPass(schedule.passCount() + 1L);
         assertFalse(schedule.lightingUpdatePass(true));
         configured.set(new ResampleSchedule.Cadence(4, 8, 4, 1));
         assertFalse(schedule.lightingUpdatePass(true));
-        schedule.beginBlockPass();
+        schedule.beginBlockPass(schedule.passCount() + 1L);
         assertTrue(schedule.lightingUpdatePass(true));
     }
 }

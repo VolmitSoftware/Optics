@@ -38,7 +38,7 @@ public final class EntityFrames<O> implements EntityFrameSource<O> {
         UUID portal = target.portalId();
         int portalKey = target.portalKey();
         boolean full = target.full();
-        boolean hideObserver = target.hideObserver();
+        boolean hideObserver = target.hideObserver() && !scenes.observerVisible(observer, portal);
         prune(tick);
         Object sceneKey = scenes.sceneKey(observer, portal);
         StateKey stateKey = new StateKey(observer, portal);

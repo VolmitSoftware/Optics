@@ -8,7 +8,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 
 import art.arcane.optics.spi.OpticsScheduler;
 
@@ -119,10 +122,11 @@ public final class ChunkLeaseRegistry<W> {
     }
 
     private void finishAdd(LeaseRecord record, long revision, int attempt, Boolean added, Throwable error) {
-        if (error != null) {
+        boolean current = isCurrentAdd(record, revision);
+        if (error != null && !(isCancellation(error) && (!current || record.owners.isEmpty()))) {
             platform.reportFailure(error);
         }
-        if (!isCurrentAdd(record, revision)) {
+        if (!current) {
             if (error == null
                 && Boolean.TRUE.equals(added)
                 && records.get(record.key) != record
@@ -336,6 +340,13 @@ public final class ChunkLeaseRegistry<W> {
             }
         }
         return null;
+    }
+
+    private static boolean isCancellation(Throwable failure) {
+        while ((failure instanceof CompletionException || failure instanceof ExecutionException) && failure.getCause() != null) {
+            failure = failure.getCause();
+        }
+        return failure instanceof CancellationException;
     }
 
     private boolean isCurrent(LeaseRecord record, long revision, Phase phase) {

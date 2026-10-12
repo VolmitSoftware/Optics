@@ -105,6 +105,36 @@ public final class BiomeClaimSet {
         return build(chunkX, chunkZ);
     }
 
+    public void invalidateLocalColumn(int chunkX, int chunkZ) {
+        localColumns.remove(CellKeys.chunkKey(chunkX, chunkZ));
+    }
+
+    public void refreshLocalColumn(int chunkX, int chunkZ, int[][] sections) {
+        if (sections.length != sectionCount) {
+            throw new IllegalArgumentException("Biome column section count does not match the local world");
+        }
+        int[] column = new int[sectionCount * AtmosphereDominance.QUART_CELLS_PER_SECTION];
+        for (int section = 0; section < sectionCount; section++) {
+            if (sections[section].length != AtmosphereDominance.QUART_CELLS_PER_SECTION) {
+                throw new IllegalArgumentException("Biome section must contain 64 quart cells");
+            }
+            System.arraycopy(sections[section], 0, column, section * AtmosphereDominance.QUART_CELLS_PER_SECTION,
+                AtmosphereDominance.QUART_CELLS_PER_SECTION);
+        }
+        localColumns.put(CellKeys.chunkKey(chunkX, chunkZ), column);
+    }
+
+    public boolean claimsChunk(int chunkX, int chunkZ) {
+        LongIterator iterator = sent.keySet().iterator();
+        long chunkKey = CellKeys.chunkKey(chunkX, chunkZ);
+        while (iterator.hasNext()) {
+            if (chunkKeyOf(iterator.nextLong()) == chunkKey) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void clear() {
         portals.clear();
         owners.clear();

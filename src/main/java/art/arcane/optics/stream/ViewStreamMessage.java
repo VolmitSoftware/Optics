@@ -8,6 +8,8 @@ import java.util.UUID;
 import art.arcane.optics.aperture.ApertureDescriptor;
 import art.arcane.optics.entity.EntitySnapshot;
 import art.arcane.optics.math.BlockBox;
+import art.arcane.optics.shape.ShapeDescriptor;
+import art.arcane.optics.transform.Affine;
 
 public sealed interface ViewStreamMessage {
     int id();
@@ -92,6 +94,25 @@ public sealed interface ViewStreamMessage {
         @Override
         public ViewStreamMessageType type() {
             return ViewStreamMessageType.PORTAL;
+        }
+    }
+
+    record PortalAffine(int portalKey, long sampleRevision, Affine apertureToSource, Affine sourceToDestination,
+                        ShapeDescriptor shape) implements Projection {
+        public PortalAffine {
+            Objects.requireNonNull(apertureToSource, "apertureToSource");
+            Objects.requireNonNull(sourceToDestination, "sourceToDestination");
+            Objects.requireNonNull(shape, "shape");
+            if (portalKey < 1 || sampleRevision < 0L || !apertureToSource.isFinite() || !sourceToDestination.isFinite()
+                || Math.abs(apertureToSource.determinant()) < 1.0E-12D
+                || Math.abs(sourceToDestination.determinant()) < 1.0E-12D) {
+                throw new IllegalArgumentException("Affine portal sample must have a positive key, nonnegative revision and invertible finite transforms");
+            }
+        }
+
+        @Override
+        public ViewStreamMessageType type() {
+            return ViewStreamMessageType.PORTAL_AFFINE;
         }
     }
 

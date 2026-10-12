@@ -6,6 +6,9 @@ import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
+import java.util.function.LongPredicate;
+import java.util.function.BiConsumer;
+
 import art.arcane.optics.claim.WorldOutput;
 import art.arcane.optics.math.CellKeys;
 import art.arcane.optics.spi.OpticsMetrics;
@@ -19,6 +22,7 @@ public final class BlockEntityLayer<O> {
     public static final String SENT_METRIC = "projection.block-entities.sent";
 
     private final OpticsMetrics metrics;
+    private final Long2ObjectOpenHashMap<BlockEntitySample> desired;
     private final Long2ObjectOpenHashMap<BlockEntitySample> sent;
     private final Long2ObjectOpenHashMap<BlockEntitySample> pending;
     private final LongArrayList pendingOrder;
@@ -27,6 +31,7 @@ public final class BlockEntityLayer<O> {
 
     public BlockEntityLayer(OpticsMetrics metrics) {
         this.metrics = metrics;
+        this.desired = new Long2ObjectOpenHashMap<BlockEntitySample>(64);
         this.sent = new Long2ObjectOpenHashMap<BlockEntitySample>(64);
         this.pending = new Long2ObjectOpenHashMap<BlockEntitySample>(64);
         this.pendingOrder = new LongArrayList(64);
@@ -35,6 +40,8 @@ public final class BlockEntityLayer<O> {
     }
 
     public void update(Long2ObjectMap<BlockEntitySample> desired, BlockEntityLookup local) {
+        this.desired.clear();
+        this.desired.putAll(desired);
         for (Long2ObjectMap.Entry<BlockEntitySample> entry : desired.long2ObjectEntrySet()) {
             long key = entry.getLongKey();
             BlockEntitySample sample = entry.getValue();
@@ -76,17 +83,42 @@ public final class BlockEntityLayer<O> {
     }
 
     public int flush(O observer, int budget, WorldOutput<O> output) {
+        return flush(observer, budget, output, key -> output.chunkSent(observer,
+            CellKeys.unpackX(key) >> 4, CellKeys.unpackZ(key) >> 4));
+    }
+
+    public int flush(O observer, int budget, WorldOutput<O> output, LongPredicate eligible) {
+        return flush(observer, budget, output, eligible, (key, sample) -> output.blockEntity(observer, key.longValue(), sample));
+    }
+
+    public int flush(O observer, int budget, WorldOutput<O> output, LongPredicate eligible,
+                     BiConsumer<Long, BlockEntitySample> sender) {
         int sentNow = 0;
-        while (sentNow < budget && !pendingOrder.isEmpty()) {
+        int remaining = pendingOrder.size();
+        while (sentNow < budget && remaining-- > 0 && !pendingOrder.isEmpty()) {
             long key = pendingOrder.removeLong(0);
-            if (!pendingKeys.remove(key)) {
+            if (!pendingKeys.contains(key)) {
                 continue;
             }
-            BlockEntitySample sample = pending.remove(key);
+            if (!eligible.test(key)) {
+                if (pendingKeys.contains(key)) {
+                    pendingOrder.add(key);
+                }
+                continue;
+            }
+            BlockEntitySample sample = pending.get(key);
             if (sample == null) {
+                dequeue(key);
                 continue;
             }
-            output.blockEntity(observer, key, sample);
+            try {
+                sender.accept(Long.valueOf(key), sample);
+            } catch (RuntimeException failure) {
+                pendingOrder.add(0, key);
+                throw failure;
+            }
+            pendingKeys.remove(key);
+            pending.remove(key);
             if (!restoring.remove(key)) {
                 sent.put(key, sample);
             }
@@ -96,6 +128,45 @@ public final class BlockEntityLayer<O> {
             metrics.count(SENT_METRIC, sentNow);
         }
         return sentNow;
+    }
+
+    public void restoreCell(long key, BlockEntitySample sample) {
+        desired.remove(key);
+        sent.remove(key);
+        restoring.add(key);
+        enqueue(key, sample);
+    }
+
+    public void discardCell(long key) {
+        desired.remove(key);
+        sent.remove(key);
+        dequeue(key);
+    }
+
+    public void invalidateAll() {
+        LongIterator iterator = desired.keySet().iterator();
+        while (iterator.hasNext()) {
+            invalidateCell(iterator.nextLong());
+        }
+    }
+
+    public void invalidateCell(long key) {
+        sent.remove(key);
+        BlockEntitySample sample = desired.get(key);
+        if (sample != null) {
+            restoring.remove(key);
+            enqueue(key, sample);
+        }
+    }
+
+    public void invalidateChunk(int chunkX, int chunkZ) {
+        LongIterator iterator = desired.keySet().iterator();
+        while (iterator.hasNext()) {
+            long key = iterator.nextLong();
+            if ((CellKeys.unpackX(key) >> 4) == chunkX && (CellKeys.unpackZ(key) >> 4) == chunkZ) {
+                invalidateCell(key);
+            }
+        }
     }
 
     public int pendingCount() {
@@ -118,6 +189,7 @@ public final class BlockEntityLayer<O> {
     }
 
     public void clear() {
+        desired.clear();
         sent.clear();
         pending.clear();
         pendingOrder.clear();

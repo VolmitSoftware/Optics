@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "minecraftVersions": ["26.2", "26.3"],
+  "clientVariants": ["unmodded", "modded"],
+  "perspective": "first-person",
+  "capture": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "minimumRealFps": 28,
+    "maximumQueueDrops": 0,
+    "preRollSeconds": 1.5,
+    "postRollSeconds": 1.5,
+    "hiddenRenderer": true,
+    "windowVisible": false,
+    "windowFocused": false,
+    "mouseGrabbed": false
+  },
+  "camera": {
+    "eye": [0, 2, 6],
+    "target": [0, 2, 0],
+    "fieldOfViewDegrees": 70,
+    "hudVisible": false,
+    "viewBobbing": false
+  },
+  "setupCommand": "opticsdemo setup {player}",
+  "triggerCommand": "opticsdemo play {scene} {player}",
+  "stopCommand": "opticsdemo stop {player}",
+  "scenes": [
+    {
+      "id": "grow-vanish",
+      "durationSeconds": 11,
+      "reviewSeconds": [0, 3.25, 5, 8, 10],
+      "visibleResult": "Small circular opening grows to full size, holds, shrinks, then leaves no aperture."
+    },
+    {
+      "id": "axis-scale",
+      "durationSeconds": 14,
+      "reviewSeconds": [0, 3, 6, 9, 13],
+      "visibleResult": "Wide opening becomes tall; depth-scaled destination differs from its initial view."
+    },
+    {
+      "id": "continuous-spin",
+      "durationSeconds": 16,
+      "reviewSeconds": [0, 1, 2, 3, 4, 13, 16],
+      "visibleResult": "Star and tip marker turn continuously through four complete rotations."
+    },
+    {
+      "id": "eased-motion",
+      "durationSeconds": 12,
+      "reviewSeconds": [0, 2, 4, 6, 8, 12],
+      "visibleResult": "Opening moves side to side while its rotation and scale interpolate smoothly."
+    },
+    {
+      "id": "easing-comparison",
+      "durationSeconds": 12,
+      "reviewSeconds": [0, 0.75, 1.5, 3, 6, 12],
+      "visibleResult": "Left linear scale and right smoother-step scale reach matched endpoints with different acceleration."
+    },
+    {
+      "id": "keyframe-loop",
+      "durationSeconds": 18,
+      "reviewSeconds": [0, 2, 4, 6, 8, 14, 18],
+      "visibleResult": "Opening follows the same closed keyframe route three times."
+    },
+    {
+      "id": "boolean-masks",
+      "durationSeconds": 16,
+      "reviewSeconds": [1, 5, 9, 13, 16],
+      "visibleResult": "Union, overlap-only intersection, subtracted crescent and ring expose different parts of the same scene."
+    },
+    {
+      "id": "shape-morph",
+      "durationSeconds": 12,
+      "reviewSeconds": [0, 2, 4, 6, 8, 12],
+      "visibleResult": "Five-point star continuously softens and sharpens without changing its point count."
+    },
+    {
+      "id": "affine-shear",
+      "durationSeconds": 12,
+      "reviewSeconds": [0, 2, 4, 6, 8, 12],
+      "visibleResult": "Opening and virtual destination skew under opposite sampled affine shears."
+    },
+    {
+      "id": "linked-transform",
+      "durationSeconds": 10,
+      "reviewSeconds": [0, 5, 10],
+      "visibleResult": "Linked source rays show the destination endpoint offset beside a direct-ray control."
+    },
+    {
+      "id": "mirror-transform",
+      "durationSeconds": 10,
+      "reviewSeconds": [0, 5, 10],
+      "visibleResult": "Right X-reflected view reverses asymmetric virtual landmarks relative to the left direct view."
+    },
+    {
+      "id": "masked-crossing",
+      "durationSeconds": 12,
+      "reviewSeconds": [0, 2, 2.5, 4, 6, 8.5, 10, 12],
+      "visibleResult": "Open-ring marker is mapped to the destination; the center-hole pass is rejected."
+    }
+  ]
+}

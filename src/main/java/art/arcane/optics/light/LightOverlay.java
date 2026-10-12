@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Iterator;
 import java.util.function.Supplier;
+import java.util.function.Consumer;
 import art.arcane.optics.spi.OpticsMetrics;
 import art.arcane.optics.view.ContentView;
 import art.arcane.optics.claim.BlockClaim;
@@ -28,6 +29,9 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
     private final Long2ObjectOpenHashMap<IntOpenHashSet> sentChunkSections = new Long2ObjectOpenHashMap<IntOpenHashSet>(8);
     private final Long2ObjectOpenHashMap<IntOpenHashSet> chunkToSections = new Long2ObjectOpenHashMap<IntOpenHashSet>(8);
     private final Long2ObjectOpenHashMap<IntOpenHashSet> pendingChunkSections = new Long2ObjectOpenHashMap<IntOpenHashSet>(8);
+    private final Long2ObjectOpenHashMap<PendingRevert> pendingReverts = new Long2ObjectOpenHashMap<PendingRevert>(8);
+    private LocalLightSender<O> localLightSender;
+    private final Long2ObjectOpenHashMap<ChunkLight> receivedBaselines = new Long2ObjectOpenHashMap<ChunkLight>(8);
     private final Long2ObjectOpenHashMap<SectionBaseline[]> baselineCache = new Long2ObjectOpenHashMap<SectionBaseline[]>(8);
     private final Long2ObjectOpenHashMap<SectionClaims> sectionClaims = new Long2ObjectOpenHashMap<SectionClaims>(16);
     private final Long2ObjectOpenHashMap<IntOpenHashSet> currentChunkSections = new Long2ObjectOpenHashMap<IntOpenHashSet>(8);
@@ -43,6 +47,10 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
         this.output = output;
         this.changes = changes;
         this.metrics = metrics;
+    }
+
+    public void localLightSender(LocalLightSender<O> sender) {
+        this.localLightSender = sender;
     }
 
     public void apply(O observer,
@@ -230,6 +238,7 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
             }
             if (entry.getValue().isEmpty()) {
                 baselineCache.remove(key);
+                receivedBaselines.remove(key);
                 staleIt.remove();
             }
         }
@@ -260,6 +269,7 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
             if (!output.chunkSent(observer, chunkX, chunkZ)
                 || sendLocalChunkLight(observer, localView, chunkX, chunkZ, entry.getValue())) {
                 baselineCache.remove(key);
+                receivedBaselines.remove(key);
                 iterator.remove();
             }
         }
@@ -269,6 +279,8 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
     }
 
     public void discard() {
+        pendingReverts.clear();
+        receivedBaselines.clear();
         sentChunkSections.clear();
         pendingChunkSections.clear();
         chunkToSections.clear();
@@ -278,12 +290,59 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
         indexedLocalView = null;
     }
 
+    public void refreshBaseline(ChunkLight light) {
+        long key = CellKeys.chunkKey(light.chunkX(), light.chunkZ());
+        receivedBaselines.merge(key, light, LightOverlay::mergeBaselines);
+        baselineCache.remove(key);
+    }
+
+    public void invalidateChunk(int chunkX, int chunkZ) {
+        long key = CellKeys.chunkKey(chunkX, chunkZ);
+        sentChunkSections.remove(key);
+        pendingChunkSections.remove(key);
+        chunkToSections.remove(key);
+        baselineCache.remove(key);
+    }
+
+    public static ChunkLight mergeBaselines(ChunkLight previous, ChunkLight next) {
+        BitSet blockMask = (BitSet) previous.blockMask().clone();
+        BitSet skyMask = (BitSet) previous.skyMask().clone();
+        BitSet emptyBlockMask = (BitSet) previous.emptyBlockMask().clone();
+        BitSet emptySkyMask = (BitSet) previous.emptySkyMask().clone();
+        byte[][] sky = mergeArrays(previous.skyMask(), previous.skyArrays(), next.skyMask(), next.skyArrays(),
+            next.emptySkyMask(), skyMask, emptySkyMask);
+        byte[][] block = mergeArrays(previous.blockMask(), previous.blockArrays(), next.blockMask(), next.blockArrays(),
+            next.emptyBlockMask(), blockMask, emptyBlockMask);
+        return new ChunkLight(next.chunkX(), next.chunkZ(), blockMask, skyMask, emptyBlockMask, emptySkyMask, sky, block);
+    }
+
+    private static byte[][] mergeArrays(BitSet previousMask, byte[][] previousArrays, BitSet nextMask,
+                                        byte[][] nextArrays, BitSet nextEmpty, BitSet mergedMask, BitSet mergedEmpty) {
+        mergedMask.andNot(nextEmpty);
+        mergedMask.or(nextMask);
+        mergedEmpty.andNot(nextMask);
+        mergedEmpty.or(nextEmpty);
+        byte[][] arrays = new byte[mergedMask.cardinality()][];
+        int index = 0;
+        for (int bit = mergedMask.nextSetBit(0); bit >= 0; bit = mergedMask.nextSetBit(bit + 1)) {
+            arrays[index++] = arrayAt(nextMask.get(bit) ? nextMask : previousMask,
+                nextMask.get(bit) ? nextArrays : previousArrays, bit).clone();
+        }
+        return arrays;
+    }
+
+    private static byte[] arrayAt(BitSet mask, byte[][] arrays, int bit) {
+        return arrays[mask.get(0, bit).cardinality()];
+    }
+
     public void discardChunk(int chunkX, int chunkZ) {
         long chunkKey = CellKeys.chunkKey(chunkX, chunkZ);
         sentChunkSections.remove(chunkKey);
         pendingChunkSections.remove(chunkKey);
         chunkToSections.remove(chunkKey);
         baselineCache.remove(chunkKey);
+        receivedBaselines.remove(chunkKey);
+        pendingReverts.remove(chunkKey);
     }
 
     public void discardUnsentChunks(O observer) {
@@ -297,16 +356,17 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
                 continue;
             }
             baselineCache.remove(chunkKey);
+            receivedBaselines.remove(chunkKey);
             iterator.remove();
         }
     }
 
     public boolean isIdle() {
-        return sentChunkSections.isEmpty() && pendingChunkSections.isEmpty();
+        return sentChunkSections.isEmpty() && pendingChunkSections.isEmpty() && pendingReverts.isEmpty();
     }
 
     public boolean hasPendingUpdates() {
-        return !pendingChunkSections.isEmpty();
+        return !pendingChunkSections.isEmpty() || !pendingReverts.isEmpty();
     }
 
     private void mergePendingSections(Long2ObjectOpenHashMap<IntOpenHashSet> sections) {
@@ -489,6 +549,14 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
         }
         int index = section - minSection;
         SectionBaseline cached = sections[index];
+        ChunkLight received = receivedBaselines.get(chunkKey);
+        int bit = index + 1;
+        if (received != null && (received.skyMask().get(bit) || received.emptySkyMask().get(bit))
+            && (received.blockMask().get(bit) || received.emptyBlockMask().get(bit))) {
+            byte[] sky = received.skyMask().get(bit) ? arrayAt(received.skyMask(), received.skyArrays(), bit) : new byte[SECTION_NIBBLE_BYTES];
+            byte[] block = received.blockMask().get(bit) ? arrayAt(received.blockMask(), received.blockArrays(), bit) : new byte[SECTION_NIBBLE_BYTES];
+            return new SectionBaseline(sky, block, Long.MIN_VALUE, System.currentTimeMillis());
+        }
         long now = System.currentTimeMillis();
         WorldChangeTracker tracker = changes.get();
         if (cached != null
@@ -518,6 +586,18 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
                 }
             }
         }
+        if (received != null) {
+            if (received.skyMask().get(bit)) {
+                skyArr = arrayAt(received.skyMask(), received.skyArrays(), bit).clone();
+            } else if (received.emptySkyMask().get(bit)) {
+                Arrays.fill(skyArr, (byte) 0);
+            }
+            if (received.blockMask().get(bit)) {
+                blockArr = arrayAt(received.blockMask(), received.blockArrays(), bit).clone();
+            } else if (received.emptyBlockMask().get(bit)) {
+                Arrays.fill(blockArr, (byte) 0);
+            }
+        }
         SectionBaseline fresh = new SectionBaseline(skyArr, blockArr, trackerVersion, now);
         sections[index] = fresh;
         return fresh;
@@ -540,6 +620,9 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
     }
 
     private boolean sendLocalChunkLight(O observer, V localView, int chunkX, int chunkZ, IntSet sections) {
+        if (pendingReverts.containsKey(CellKeys.chunkKey(chunkX, chunkZ))) {
+            return false;
+        }
         if (!output.chunkSent(observer, chunkX, chunkZ)) {
             return true;
         }
@@ -562,27 +645,13 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
         int[] orderedSections = sortedValidSections(sections, minSec, maxSec);
         int arrIdx = 0;
         for (int section : orderedSections) {
-            int sectionMinY = section << 4;
             int maskIndex = (section - minSec) + 1;
-
-            byte[] skyArr = new byte[SECTION_NIBBLE_BYTES];
-            byte[] blockArr = new byte[SECTION_NIBBLE_BYTES];
-
-            for (int ly = 0; ly < 16; ly++) {
-                int y = sectionMinY + ly;
-                for (int lz = 0; lz < 16; lz++) {
-                    int z = (chunkZ << 4) + lz;
-                    for (int lx = 0; lx < 16; lx++) {
-                        int x = (chunkX << 4) + lx;
-                        int packedLight = localView.getLight(x, y, z);
-                        if (packedLight == ContentView.LIGHT_UNAVAILABLE) {
-                            return false;
-                        }
-                        writeLightNibble(skyArr, blockArr, (ly << 8) | (lz << 4) | lx,
-                            ContentView.unpackSkyLight(packedLight), ContentView.unpackBlockLight(packedLight));
-                    }
-                }
+            SectionBaseline baseline = localBaseline(localView, chunkX, chunkZ, section, minSec, maxSec);
+            if (baseline == null) {
+                return false;
             }
+            byte[] skyArr = baseline.sky.clone();
+            byte[] blockArr = baseline.block.clone();
 
             skyArrays[arrIdx] = skyArr;
             blockArrays[arrIdx] = blockArr;
@@ -591,10 +660,61 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
             arrIdx++;
         }
 
-        output.light(observer, new ChunkLight(chunkX, chunkZ, blockMask, skyMask,
-            emptyBlockMask, emptySkyMask, skyArrays, blockArrays));
+        ChunkLight light = new ChunkLight(chunkX, chunkZ, blockMask, skyMask,
+            emptyBlockMask, emptySkyMask, skyArrays, blockArrays);
+        if (localLightSender == null) {
+            output.light(observer, light);
+            metrics.packet();
+            return true;
+        }
+        long key = CellKeys.chunkKey(chunkX, chunkZ);
+        if (pendingReverts.containsKey(key)) {
+            return false;
+        }
+        PendingRevert receipt = new PendingRevert(new IntOpenHashSet(sections));
+        pendingReverts.put(key, receipt);
+        try {
+            localLightSender.send(observer, light, success -> completeRevert(key, receipt, success));
+        } catch (RuntimeException failure) {
+            pendingReverts.remove(key);
+            throw failure;
+        }
         metrics.packet();
-        return true;
+        return false;
+    }
+
+    private void completeRevert(long key, PendingRevert receipt, boolean success) {
+        if (pendingReverts.get(key) != receipt) {
+            return;
+        }
+        pendingReverts.remove(key);
+        if (!success) {
+            return;
+        }
+        IntOpenHashSet active = currentChunkSections.get(key);
+        IntOpenHashSet retired = new IntOpenHashSet(receipt.sections());
+        if (active != null) {
+            retired.removeAll(active);
+            IntOpenHashSet replay = new IntOpenHashSet(receipt.sections());
+            replay.retainAll(active);
+            if (!replay.isEmpty()) {
+                IntOpenHashSet pending = pendingChunkSections.get(key);
+                if (pending == null) {
+                    pending = new IntOpenHashSet();
+                    pendingChunkSections.put(key, pending);
+                }
+                pending.addAll(replay);
+            }
+        }
+        IntOpenHashSet sent = sentChunkSections.get(key);
+        if (sent != null) {
+            sent.removeAll(retired);
+            if (sent.isEmpty()) {
+                sentChunkSections.remove(key);
+                baselineCache.remove(key);
+                receivedBaselines.remove(key);
+            }
+        }
     }
 
     public static int[] sortedValidSections(IntSet sections, int minSection, int maxSection) {
@@ -677,6 +797,14 @@ public final class LightOverlay<O, B, V extends ContentView<?, ?>> {
             this.trackerVersion = trackerVersion;
             this.readMillis = readMillis;
         }
+    }
+
+    @FunctionalInterface
+    public interface LocalLightSender<O> {
+        void send(O observer, ChunkLight light, Consumer<Boolean> completion);
+    }
+
+    private record PendingRevert(IntOpenHashSet sections) {
     }
 
     public record ChunkLight(int chunkX, int chunkZ, BitSet blockMask, BitSet skyMask,

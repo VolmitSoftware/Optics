@@ -1,0 +1,15 @@
+name: OpticsDemo
+version: '${version}'
+main: art.arcane.optics.demo.OpticsDemoPlugin
+api-version: '26.1'
+description: Standalone Optics block-packet and native client projection demonstrations.
+commands:
+  opticsdemo:
+    description: Set up and play an Optics demonstration.
+    usage: /opticsdemo list|setup [player]|preview <scene> [player]|play <scene> [player]|stop [player]|status [player]
+    permission: opticsdemo.use
+permissions:
+  opticsdemo.use:
+    default: op
+  opticsdemo.others:
+    default: op
