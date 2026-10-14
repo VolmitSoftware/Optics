@@ -19,8 +19,10 @@ import art.arcane.optics.frame.QuarterTurn;
 import art.arcane.optics.math.Axis;
 import art.arcane.optics.math.Face;
 import art.arcane.optics.math.Vec3d;
+import art.arcane.optics.shape.FitMode;
 import art.arcane.optics.shape.PlaneTransform;
 import art.arcane.optics.shape.ShapeDescriptor;
+import art.arcane.optics.shape.Shapes;
 
 final class PortalDefinitionOpsTest {
     @Test
@@ -127,7 +129,7 @@ final class PortalDefinitionOpsTest {
                     random.nextInt(-64, 64), random.nextInt(-64, 64));
                 PortalDefinition mapped = portal.transformed(rigid);
                 assertEquals(rigid.frame(frame), mapped.frame());
-                assertEquals(portal.shape(), mapped.shape());
+                assertEquals(rigid.reflects() ? portal.shape().transformed(PlaneTransform.flipU()) : portal.shape(), mapped.shape());
                 assertEquals(rigid.point(portal.origin()).distance(mapped.origin()), 0.0D, 1.0E-9D);
                 assertConsistent(mapped);
                 int[] cell = new int[3];
@@ -139,6 +141,48 @@ final class PortalDefinitionOpsTest {
                     rigid.cellInto(cell[0], cell[1], cell[2], image);
                     assertTrue(mapped.area().containsPrimitive(image[0] + 0.5D, image[1] + 0.5D, image[2] + 0.5D), frame + " " + rigid);
                 }
+            }
+        }
+    }
+
+    @Test
+    void asymmetricMasksMapThroughEveryRotationAndReflection() {
+        ShapeDescriptor triangle = ShapeDescriptor.of(Shapes.polygon(-1.0D, -1.0D, 1.0D, -1.0D, -1.0D, 1.0D), FitMode.STRETCH);
+        for (Frame frame : PortalFixtures.frames()) {
+            PortalDefinition portal = PortalFixtures.portal(frame, 2, 64, -3, 4, 6).withShape(triangle).withPlaneOffset(0.25D);
+            for (int index = 0; index < 48; index++) {
+                OpticTransform transform = OpticTransform.of(AxisPermutation.ofIndex(index), 10.0D, 20.0D, 30.0D);
+                PortalDefinition mapped = portal.transformed(transform);
+                assertCellsMap(portal, mapped, transform);
+                assertMaskPointsMap(portal, mapped, transform);
+            }
+        }
+    }
+
+    @Test
+    void flippingAnAsymmetricMaskPreservesItsPhysicalOpening() {
+        ShapeDescriptor triangle = ShapeDescriptor.of(Shapes.polygon(-1.0D, -1.0D, 1.0D, -1.0D, -1.0D, 1.0D), FitMode.STRETCH);
+        for (Frame frame : PortalFixtures.frames()) {
+            PortalDefinition portal = PortalFixtures.portal(frame, 2, 64, -3, 4, 6).withShape(triangle).withPlaneOffset(0.25D);
+            PortalDefinition flipped = portal.flipped();
+            assertEquals(PortalFixtures.cells(portal), PortalFixtures.cells(flipped));
+            assertMaskPointsMap(portal, flipped, OpticTransform.IDENTITY);
+            assertMaskPointsMap(portal, flipped.flipped(), OpticTransform.IDENTITY);
+        }
+    }
+
+    private static void assertMaskPointsMap(PortalDefinition source, PortalDefinition destination, OpticTransform transform) {
+        Vec3d center = source.origin();
+        Face right = source.frame().getRight();
+        Face up = source.frame().getUp();
+        for (int row = 0; row < 12; row++) {
+            for (int column = 0; column < 8; column++) {
+                double u = (column + 0.25D) * frameWidth(source) / 8.0D - frameWidth(source) * 0.5D;
+                double v = (row + 0.25D) * frameHeight(source) / 12.0D - frameHeight(source) * 0.5D;
+                Vec3d point = center.add(new Vec3d(right.x() * u + up.x() * v, right.y() * u + up.y() * v,
+                    right.z() * u + up.z() * v));
+                assertEquals(source.containsPoint(point, 1.0E-9D), destination.containsPoint(transform.point(point), 1.0E-9D),
+                    source.frame() + " " + transform + " " + point);
             }
         }
     }
@@ -170,7 +214,8 @@ final class PortalDefinitionOpsTest {
             assertEquals(portal.originZ(), flipped.originZ());
             assertEquals(portal.columns(), flipped.columns());
             assertEquals(portal.rows(), flipped.rows());
-            assertEquals(portal.shape(), flipped.shape());
+            assertEquals(portal.shape().transformed(PlaneTransform.flipU()), flipped.shape());
+            assertEquals(PortalFixtures.cells(portal), PortalFixtures.cells(flipped));
             assertEquals(portal.origin(), flipped.origin());
             assertConsistent(flipped);
         }

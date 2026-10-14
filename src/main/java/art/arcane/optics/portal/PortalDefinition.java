@@ -247,7 +247,7 @@ public final class PortalDefinition implements Endpoint {
         for (int turn = 0; turn < turns.getQuarterTurns(); turn++) {
             next = next.rotateClockwise();
         }
-        return reoriented(next, origin);
+        return reoriented(next, origin, shape);
     }
 
     public PortalDefinition rotatedAbout(Axis axis, QuarterTurn turns) {
@@ -258,11 +258,12 @@ public final class PortalDefinition implements Endpoint {
     }
 
     public PortalDefinition facing(Face normal) {
-        return reoriented(frame.withNormal(normal), origin);
+        return reoriented(frame.withNormal(normal), origin, shape);
     }
 
     public PortalDefinition flipped() {
-        return with(new Layout(frame.flipNormal(), originX, originY, originZ, columns, rows, -planeOffset), shape, link, metadata);
+        return with(new Layout(frame.flipNormal(), originX, originY, originZ, columns, rows, -planeOffset),
+            shape.isFull() ? shape : shape.transformed(PlaneTransform.flipU()), link, metadata);
     }
 
     public PortalDefinition mirroredU() {
@@ -347,7 +348,8 @@ public final class PortalDefinition implements Endpoint {
     }
 
     public PortalDefinition transformed(OpticTransform rigid) {
-        return reoriented(rigid.frame(frame), rigid.point(origin));
+        return reoriented(rigid.frame(frame), rigid.point(origin),
+            rigid.reflects() && !shape.isFull() ? shape.transformed(PlaneTransform.flipU()) : shape);
     }
 
     public boolean containsCell(int x, int y, int z) {
@@ -489,11 +491,11 @@ public final class PortalDefinition implements Endpoint {
         return next.equals(this) ? this : next;
     }
 
-    private PortalDefinition reoriented(Frame next, Vec3d center) {
+    private PortalDefinition reoriented(Frame next, Vec3d center, ShapeDescriptor orientedShape) {
         int width = frameWidth();
         int height = frameHeight();
         boolean nextRightOnColumns = next.getRight().axisIndex() == Frame.canonical(next.getNormal()).getRight().axisIndex();
-        return with(Layout.centered(next, center, nextRightOnColumns ? width : height, nextRightOnColumns ? height : width, planeOffset), shape,
+        return with(Layout.centered(next, center, nextRightOnColumns ? width : height, nextRightOnColumns ? height : width, planeOffset), orientedShape,
             link, metadata);
     }
 

@@ -25,7 +25,7 @@ public final class ViewPlateCache<B, W> {
     private static final int MAX_BACKOFF_DOUBLINGS = 5;
 
     private final Map<ViewPlateKey, ViewPlate<B>> plates;
-    private final Map<ViewPlateKey, ViewPlateBuilder.Job<B, W>> building;
+    private final Map<ViewPlateKey, PendingBuild<B, W>> building;
     private final Map<ViewPlateKey, Long> refused;
     private final Map<ViewPlateKey, Backoff> failures;
     private final AtomicLong bytes;
@@ -35,7 +35,7 @@ public final class ViewPlateCache<B, W> {
 
     public ViewPlateCache(long maxBytes, Consumer<ViewPlateBuilder.Job<B, W>> scheduler) {
         this.plates = new ConcurrentHashMap<ViewPlateKey, ViewPlate<B>>();
-        this.building = new ConcurrentHashMap<ViewPlateKey, ViewPlateBuilder.Job<B, W>>();
+        this.building = new ConcurrentHashMap<ViewPlateKey, PendingBuild<B, W>>();
         this.refused = new ConcurrentHashMap<ViewPlateKey, Long>();
         this.failures = new ConcurrentHashMap<ViewPlateKey, Backoff>();
         this.bytes = new AtomicLong();
@@ -57,7 +57,7 @@ public final class ViewPlateCache<B, W> {
                 plate.touch(now);
                 boolean expired = plate.builtBefore(now - REFRESH_NANOS);
                 if ((expired || plate.dirty()) && canSchedule(key, transformRevision, jobFactory, now)) {
-                    schedule(key, transformRevision, jobFactory.apply(expired ? null : plate), urgent || plate.dirty());
+                    schedule(key, transformRevision, expired ? null : plate, jobFactory, urgent || plate.dirty(), now);
                 } else if (plate.dirty()) {
                     promote(key);
                 }
@@ -66,7 +66,7 @@ public final class ViewPlateCache<B, W> {
             drop(plate);
         }
         if (canSchedule(key, transformRevision, jobFactory, now)) {
-            schedule(key, transformRevision, jobFactory.apply(null), urgent);
+            schedule(key, transformRevision, null, jobFactory, urgent, now);
         } else if (urgent) {
             promote(key);
         }
@@ -83,24 +83,26 @@ public final class ViewPlateCache<B, W> {
     }
 
     public boolean isBuilding(ViewPlateBuilder.Job<B, W> job) {
-        return building.get(job.key()) == job;
+        PendingBuild<B, W> pending = building.get(job.key());
+        return pending != null && pending.job == job;
     }
 
     public boolean captureQueued(ViewPlateKey key) {
-        ViewPlateBuilder.Job<B, W> job = building.get(key);
-        return job instanceof PlateCaptureJob<B, W, ?> capture && capture.waitingForBudget();
+        PendingBuild<B, W> pending = building.get(key);
+        return pending != null && pending.job instanceof PlateCaptureJob<B, W, ?> capture && capture.waitingForBudget();
     }
 
-    public void publish(ViewPlateBuilder.Job<B, W> job, ViewPlate<B> plate) {
+    public synchronized void publish(ViewPlateBuilder.Job<B, W> job, ViewPlate<B> plate) {
         if (plate == null) {
             buildFailed(job);
             return;
         }
-        if (!isBuilding(job)) {
+        PendingBuild<B, W> pending = building.get(job.key());
+        if (pending == null || pending.job != job) {
             return;
         }
         if (plate.bytes() > maxBytes) {
-            if (building.remove(job.key(), job)) {
+            if (building.remove(job.key(), pending)) {
                 failures.remove(job.key());
                 refused.put(plate.key(), Long.valueOf(plate.transformRevision()));
                 invalidate(plate.key());
@@ -112,31 +114,29 @@ public final class ViewPlateCache<B, W> {
             bytes.addAndGet(-previous.bytes());
         }
         bytes.addAndGet(plate.bytes());
-        if (!building.remove(job.key(), job)) {
-            drop(plate);
-            return;
-        }
+        building.remove(job.key(), pending);
         failures.remove(job.key());
         builds.incrementAndGet();
         evictToFit();
     }
 
-    public void buildFailed(ViewPlateBuilder.Job<B, W> job) {
-        if (!building.remove(job.key(), job)) {
+    public synchronized void buildFailed(ViewPlateBuilder.Job<B, W> job) {
+        PendingBuild<B, W> pending = building.get(job.key());
+        if (pending == null || pending.job != job || !building.remove(job.key(), pending)) {
             return;
         }
         long now = System.nanoTime();
         failures.compute(job.key(), (key, previous) -> Backoff.after(previous, now));
     }
 
-    public void invalidate(ViewPlateKey key) {
+    public synchronized void invalidate(ViewPlateKey key) {
         ViewPlate<B> removed = plates.remove(key);
         if (removed != null) {
             bytes.addAndGet(-removed.bytes());
         }
     }
 
-    public void invalidatePortal(UUID portalId) {
+    public synchronized void invalidatePortal(UUID portalId) {
         for (ViewPlateKey key : plates.keySet()) {
             if (key.portalId().equals(portalId)) {
                 invalidate(key);
@@ -147,7 +147,7 @@ public final class ViewPlateCache<B, W> {
         failures.keySet().removeIf(key -> key.portalId().equals(portalId));
     }
 
-    public void invalidateTarget(UUID portalId, long targetIdentity) {
+    public synchronized void invalidateTarget(UUID portalId, long targetIdentity) {
         for (ViewPlateKey key : plates.keySet()) {
             if (isTarget(key, portalId, targetIdentity)) {
                 invalidate(key);
@@ -169,13 +169,13 @@ public final class ViewPlateCache<B, W> {
         }
     }
 
-    public void recap(long newMaxBytes) {
+    public synchronized void recap(long newMaxBytes) {
         maxBytes = Math.max(1L, newMaxBytes);
         refused.clear();
         evictToFit();
     }
 
-    public void clear() {
+    public synchronized void clear() {
         plates.clear();
         building.clear();
         refused.clear();
@@ -208,30 +208,71 @@ public final class ViewPlateCache<B, W> {
         return backoff == null || backoff.untilNanos() - now <= 0L;
     }
 
-    private void schedule(ViewPlateKey key, long transformRevision, ViewPlateBuilder.Job<B, W> job, boolean urgent) {
-        if (job == null) {
+    private void schedule(ViewPlateKey key, long transformRevision, ViewPlate<B> previous,
+                          Function<ViewPlate<B>, ViewPlateBuilder.Job<B, W>> jobFactory, boolean urgent, long now) {
+        PendingBuild<B, W> pending;
+        synchronized (this) {
+            if (!canSchedule(key, transformRevision, jobFactory, now)) {
+                pending = null;
+            } else {
+                pending = new PendingBuild<B, W>(urgent);
+                building.put(key, pending);
+            }
+        }
+        if (pending == null) {
+            if (urgent) {
+                promote(key);
+            }
             return;
         }
-        if (job.predictedBytes() > maxBytes) {
-            refused.put(key, Long.valueOf(transformRevision));
-            return;
+        try {
+            ViewPlateBuilder.Job<B, W> job = jobFactory.apply(previous);
+            if (job == null) {
+                retire(key, pending);
+                return;
+            }
+            long predictedBytes = job.predictedBytes();
+            boolean promote;
+            synchronized (this) {
+                if (building.get(key) != pending) {
+                    return;
+                }
+                if (predictedBytes > maxBytes) {
+                    building.remove(key, pending);
+                    refused.put(key, Long.valueOf(transformRevision));
+                    return;
+                }
+                pending.job = job;
+                promote = pending.urgent;
+            }
+            if (promote) {
+                job.markUrgent();
+            }
+            if (building.get(key) == pending) {
+                scheduler.accept(job);
+            }
+        } catch (RuntimeException | Error failure) {
+            retire(key, pending);
+            throw failure;
         }
-        if (urgent) {
-            job.markUrgent();
-        }
-        if (building.putIfAbsent(key, job) == null) {
-            scheduler.accept(job);
-        }
+    }
+
+    private synchronized void retire(ViewPlateKey key, PendingBuild<B, W> pending) {
+        building.remove(key, pending);
     }
 
     private void promote(ViewPlateKey key) {
-        ViewPlateBuilder.Job<B, W> inFlight = building.get(key);
-        if (inFlight != null) {
-            inFlight.markUrgent();
+        PendingBuild<B, W> pending = building.get(key);
+        if (pending != null) {
+            pending.urgent = true;
+            ViewPlateBuilder.Job<B, W> job = pending.job;
+            if (job != null) {
+                job.markUrgent();
+            }
         }
     }
 
-    private void drop(ViewPlate<B> plate) {
+    private synchronized void drop(ViewPlate<B> plate) {
         if (plates.remove(plate.key(), plate)) {
             bytes.addAndGet(-plate.bytes());
         }
@@ -253,6 +294,15 @@ public final class ViewPlateCache<B, W> {
                 return;
             }
             bytes.addAndGet(-oldest.bytes());
+        }
+    }
+
+    private static final class PendingBuild<B, W> {
+        private volatile ViewPlateBuilder.Job<B, W> job;
+        private volatile boolean urgent;
+
+        private PendingBuild(boolean urgent) {
+            this.urgent = urgent;
         }
     }
 

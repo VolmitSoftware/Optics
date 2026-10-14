@@ -7,7 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -166,7 +168,7 @@ class EntityFramesTest {
     }
 
     @Test
-    void lostSceneClearsPresenceOnce() {
+    void lostSceneClearsPresenceOnceEvenWhenAFullResyncIsRequested() {
         List<EntitySnapshot> scene = List.of(visual(UUID.randomUUID(), 10.5D, 0.0D));
         boolean[] visible = {true};
         EntityFrames<String> frames = new EntityFrames<String>(new EntityScenes<String>() {
@@ -182,10 +184,42 @@ class EntityFramesTest {
         });
         frames.frame("observer", new EntityFrameTarget(PORTAL, 1, true, false), 1L);
         visible[0] = false;
-        ViewStreamMessage.EntityFrame cleared = frames.frame("observer", new EntityFrameTarget(PORTAL, 1, false, false), 2L);
+        ViewStreamMessage.EntityFrame cleared = frames.frame("observer", new EntityFrameTarget(PORTAL, 1, true, false), 2L);
+        assertNotNull(cleared);
+        assertTrue(cleared.presence());
         assertTrue(cleared.entities().isEmpty());
         assertTrue(cleared.presentIds().isEmpty());
         assertNull(frames.frame("observer", new EntityFrameTarget(PORTAL, 1, false, false), 3L));
+    }
+
+    @Test
+    void continuouslyMovingCrowdsSpawnAndRefreshEveryEntityWithinTwoFrames() {
+        List<EntitySnapshot> crowd = new ArrayList<EntitySnapshot>(400);
+        for (int i = 0; i < 400; i++) {
+            crowd.add(visual(new UUID(0L, i), i, 0.0D));
+        }
+        EntityFrames<String> frames = new EntityFrames<String>(scenes(crowd, new AtomicInteger()));
+        Map<UUID, EntitySnapshot> received = new HashMap<UUID, EntitySnapshot>();
+        Map<UUID, Long> updated = new HashMap<UUID, Long>();
+        for (long tick = 1L; tick <= 20L; tick++) {
+            for (int i = 0; i < crowd.size(); i++) {
+                crowd.set(i, visual(crowd.get(i).id(), i + tick * 0.25D, 0.0D));
+            }
+            ViewStreamMessage.EntityFrame frame = frames.frame("observer", new EntityFrameTarget(PORTAL, 1, tick == 1L, false), tick);
+            assertNotNull(frame);
+            assertEquals(ViewStreamLimits.MAX_ENTITIES_PER_FRAME, frame.entities().size());
+            for (EntitySnapshot delta : frame.entities()) {
+                received.put(delta.id(), delta.isFull() ? delta : EntityDeltaCodec.applyDelta(delta, received.get(delta.id())));
+                updated.put(delta.id(), tick);
+            }
+            if (tick >= 2L) {
+                assertEquals(400, received.size());
+                for (EntitySnapshot current : crowd) {
+                    assertTrue(tick - updated.get(current.id()) <= 1L, current.id().toString());
+                    assertTrue(current.x() - received.get(current.id()).x() <= 0.25D);
+                }
+            }
+        }
     }
 
     @Test

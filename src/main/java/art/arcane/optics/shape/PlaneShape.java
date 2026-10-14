@@ -3,6 +3,7 @@ package art.arcane.optics.shape;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.DoubleBinaryOperator;
 
 import art.arcane.optics.internal.shape.Placement;
 
@@ -22,6 +23,7 @@ public final class PlaneShape {
     private final double meanScale;
     private final double minScale;
     private final double maxScale;
+    private final DoubleBinaryOperator distanceBound;
     private final boolean full;
     private final Bounds2 bounds;
     private final ShapeRaster[] rasters = new ShapeRaster[9];
@@ -43,6 +45,7 @@ public final class PlaneShape {
         minScale = ShapeMath.minStretch(placement);
         maxScale = ShapeMath.maxStretch(placement);
         full = fit == FitMode.STRETCH && Shapes.FULL.equals(shape) && signedPermutation(orientation);
+        distanceBound = full ? null : ShapeMath.distanceBound(shape);
         Bounds2 rectangle = new Bounds2(0.0D, 0.0D, columns, rows);
         bounds = full ? rectangle : shape.bounds().transformed(placement).intersect(rectangle);
     }
@@ -158,7 +161,7 @@ public final class PlaneShape {
         if (full) {
             return -1;
         }
-        double distance = shape.signedDistance(unitU(column + 0.5D, row + 0.5D), unitV(column + 0.5D, row + 0.5D)) * minScale;
+        double distance = distanceBound.applyAsDouble(unitU(column + 0.5D, row + 0.5D), unitV(column + 0.5D, row + 0.5D)) * minScale;
         if (distance < -HALF_DIAGONAL * CERTIFY_MARGIN) {
             return -1;
         }

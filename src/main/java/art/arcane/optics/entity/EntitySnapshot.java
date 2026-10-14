@@ -181,9 +181,9 @@ public record EntitySnapshot(
             out.writeUTF(typeKey == null ? "" : typeKey);
         }
         if ((presentMask & FIELD_POSITION) != 0) {
-            out.writeInt(quantize(x));
-            out.writeInt(quantize(y));
-            out.writeInt(quantize(z));
+            out.writeLong(quantize(x));
+            out.writeLong(quantize(y));
+            out.writeLong(quantize(z));
         }
         if ((presentMask & FIELD_HEIGHT) != 0) {
             out.writeByte(quantizeHeight(height));
@@ -248,9 +248,9 @@ public record EntitySnapshot(
         double y = 0.0D;
         double z = 0.0D;
         if ((presentMask & FIELD_POSITION) != 0) {
-            x = dequantize(in.readInt());
-            y = dequantize(in.readInt());
-            z = dequantize(in.readInt());
+            x = dequantize(in.readLong());
+            y = dequantize(in.readLong());
+            z = dequantize(in.readLong());
         }
         double height = 0.0D;
         if ((presentMask & FIELD_HEIGHT) != 0) {
@@ -339,18 +339,11 @@ public record EntitySnapshot(
         );
     }
 
-    public static int quantize(double value) {
-        double scaled = value * 4096.0D;
-        if (scaled > (double) Integer.MAX_VALUE) {
-            return Integer.MAX_VALUE;
-        }
-        if (scaled < (double) Integer.MIN_VALUE) {
-            return Integer.MIN_VALUE;
-        }
-        return (int) Math.round(scaled);
+    public static long quantize(double value) {
+        return Math.round(value * 4096.0D);
     }
 
-    public static double dequantize(int quantized) {
+    public static double dequantize(long quantized) {
         return ((double) quantized) * POSITION_QUANTUM;
     }
 

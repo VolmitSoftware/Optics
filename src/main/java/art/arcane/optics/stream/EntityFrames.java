@@ -44,7 +44,7 @@ public final class EntityFrames<O> implements EntityFrameSource<O> {
         StateKey stateKey = new StateKey(observer, portal);
         if (sceneKey == null) {
             ObserverState previous = states.remove(stateKey);
-            if (previous == null || previous.present.isEmpty() || full) {
+            if (previous == null || previous.present.isEmpty()) {
                 return null;
             }
             return new ViewStreamMessage.EntityFrame(portalKey, previous.sequence + 1, List.of(), List.of(), true);
@@ -156,6 +156,7 @@ public final class EntityFrames<O> implements EntityFrameSource<O> {
         volatile Set<UUID> present;
         boolean forcePresence;
         int sequence;
+        int nextEntity;
         long touched;
         int eventSequence;
         ConcurrentLinkedQueue<EntityAnimation> events = new ConcurrentLinkedQueue<>();
@@ -176,8 +177,10 @@ public final class EntityFrames<O> implements EntityFrameSource<O> {
             HashSet<UUID> current = new HashSet<UUID>(Math.max(4, count * 2));
             List<UUID> presentIds = new ArrayList<UUID>(count);
             List<EntitySnapshot> outbound = new ArrayList<EntitySnapshot>(Math.min(count, ViewStreamLimits.MAX_ENTITIES_PER_FRAME));
+            int start = count == 0 ? 0 : nextEntity % count;
             for (int i = 0; i < count; i++) {
-                EntitySnapshot visual = visuals.get(i);
+                int index = (start + i) % count;
+                EntitySnapshot visual = visuals.get(index);
                 if (!visible.test(visual) || !current.add(visual.id())) {
                     continue;
                 }
@@ -194,6 +197,7 @@ public final class EntityFrames<O> implements EntityFrameSource<O> {
                 if (previous == null) {
                     outbound.add(sequenced(visual, EntitySnapshot.MODE_FULL));
                     sent.put(visual.id(), visual);
+                    nextEntity = (index + 1) % count;
                     continue;
                 }
                 int mask = EntityDeltaCodec.computeMask(visual, previous);
@@ -204,6 +208,7 @@ public final class EntityFrames<O> implements EntityFrameSource<O> {
                     ? sequenced(visual, EntitySnapshot.MODE_FULL)
                     : EntityDeltaCodec.buildDelta(visual, previous, ++sequence & 0xFFFF, mask));
                 sent.put(visual.id(), visual);
+                nextEntity = (index + 1) % count;
             }
             Iterator<Map.Entry<UUID, EntitySnapshot>> iterator = sent.entrySet().iterator();
             while (iterator.hasNext()) {

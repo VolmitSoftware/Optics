@@ -14,6 +14,8 @@ import art.arcane.optics.math.Face;
 import art.arcane.optics.aperture.ApertureDescriptor;
 
 public final class ClientRecursionPlanner {
+    private static final double EPSILON = 1.0E-7D;
+
     private final int depthCap;
 
     public ClientRecursionPlanner(int depthCap) {
@@ -27,7 +29,7 @@ public final class ClientRecursionPlanner {
         }
         List<NestedCone> cones = new ArrayList<NestedCone>(root.nested().size());
         List<Window> chain = List.of(new Window(root, OpticTransform.IDENTITY, List.of(), eyeX, eyeY, eyeZ));
-        descend(root, OpticTransform.IDENTITY, List.of(), chain, 1, limit, eyeX, eyeY, eyeZ, cones);
+        descend(root, OpticTransform.IDENTITY, List.of(), chain, 1, limit, eyeX, eyeY, eyeZ, cones, new ApertureOverlap());
         return cones;
     }
 
@@ -61,7 +63,7 @@ public final class ClientRecursionPlanner {
     }
 
     private static void descend(ApertureDescriptor parent, OpticTransform parentTransform, List<ApertureDescriptor> parentReflections,
-                                List<Window> chain, int depth, int limit, double eyeX, double eyeY, double eyeZ, List<NestedCone> out) {
+                                List<Window> chain, int depth, int limit, double eyeX, double eyeY, double eyeZ, List<NestedCone> out, ApertureOverlap overlap) {
         OpticTransform transform = parent.mirror() ? parentTransform.compose(parent.mirrorTransform()) : parentTransform;
         List<ApertureDescriptor> reflections = parent.mirror() ? reflections(parent, parentReflections) : parentReflections;
         double[] scratch = new double[3];
@@ -70,7 +72,7 @@ public final class ClientRecursionPlanner {
                 continue;
             }
             Window window = new Window(child, transform, reflections, eyeX, eyeY, eyeZ);
-            if (!window.servesEye() || !anyCornerVisible(chain, window, scratch)) {
+            if (!window.servesEye() || (!anyCornerVisible(chain, window, scratch) && !overlap.reaches(chain, window))) {
                 continue;
             }
             out.add(new NestedCone(child, depth, chain, window));
@@ -79,7 +81,7 @@ public final class ClientRecursionPlanner {
                 List<Window> childChain = new ArrayList<Window>(chain.size() + 1);
                 childChain.addAll(chain);
                 childChain.add(window);
-                descend(child, transform, reflections, List.copyOf(childChain), depth + 1, childLimit, eyeX, eyeY, eyeZ, out);
+                descend(child, transform, reflections, List.copyOf(childChain), depth + 1, childLimit, eyeX, eyeY, eyeZ, out, overlap);
             }
         }
     }
@@ -173,6 +175,115 @@ public final class ClientRecursionPlanner {
         }
     }
 
+    private static final class ApertureOverlap {
+        private final double[] first = new double[36];
+        private final double[] second = new double[36];
+        private final double[] point = new double[3];
+        private double[] input;
+        private double[] output;
+        private int vertices;
+
+        private boolean reaches(List<Window> ancestors, Window child) {
+            List<Box> childFaces = child.faces();
+            for (Window ancestor : ancestors) {
+                if (!reaches(ancestor, child, childFaces)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private boolean reaches(Window ancestor, Window child, List<Box> childFaces) {
+            double distance = ancestor.signed(ancestor.eyeX, ancestor.eyeY, ancestor.eyeZ, ancestor.normal);
+            if (distance <= EPSILON) {
+                return true;
+            }
+            OpticTransform mapping = ancestor.content.compose(child.transform);
+            for (Box opening : ancestor.faces()) {
+                for (Box face : childFaces) {
+                    if (intersects(ancestor, child, mapping, opening, face, distance)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private boolean intersects(Window ancestor, Window child, OpticTransform mapping, Box opening, Box face, double distance) {
+            int childNormal = child.normal.axisIndex();
+            int firstAxis = (childNormal + 1) % 3;
+            int secondAxis = (childNormal + 2) % 3;
+            for (int corner = 0; corner < 4; corner++) {
+                point[childNormal] = child.geometry.planeCoordinate();
+                point[firstAxis] = corner == 0 || corner == 3 ? face.min(firstAxis) : face.max(firstAxis) + 0.001D;
+                point[secondAxis] = corner < 2 ? face.min(secondAxis) : face.max(secondAxis) + 0.001D;
+                mapping.pointInto(point[0], point[1], point[2], point);
+                first[corner * 3] = point[0] - ancestor.eyeX;
+                first[corner * 3 + 1] = point[1] - ancestor.eyeY;
+                first[corner * 3 + 2] = point[2] - ancestor.eyeZ;
+            }
+            input = first;
+            output = second;
+            vertices = 4;
+            Face normal = ancestor.normal;
+            if (!clip(-normal.x(), -normal.y(), -normal.z(), -distance)) {
+                return false;
+            }
+            double padding = Math.min(ancestor.geometry.aperturePadding(), 1.0D - EPSILON);
+            for (int axis = 0; axis < 3; axis++) {
+                if (axis == normal.axisIndex()) {
+                    continue;
+                }
+                double eye = axis == 0 ? ancestor.eyeX : axis == 1 ? ancestor.eyeY : ancestor.eyeZ;
+                double low = Math.max(opening.min(axis) - padding, ancestor.area.min(axis) - ancestor.geometry.aperturePadding());
+                double high = Math.min(opening.max(axis) + 0.001D + padding,
+                    ancestor.area.max(axis) + ancestor.geometry.aperturePadding());
+                double delta = low - eye;
+                if (!clip(delta * normal.x() + (axis == 0 ? distance : 0.0D),
+                    delta * normal.y() + (axis == 1 ? distance : 0.0D),
+                    delta * normal.z() + (axis == 2 ? distance : 0.0D), 0.0D)) {
+                    return false;
+                }
+                delta = high - eye;
+                if (!clip(-delta * normal.x() - (axis == 0 ? distance : 0.0D),
+                    -delta * normal.y() - (axis == 1 ? distance : 0.0D),
+                    -delta * normal.z() - (axis == 2 ? distance : 0.0D), 0.0D)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private boolean clip(double x, double y, double z, double constant) {
+            int nextVertices = 0;
+            int previous = (vertices - 1) * 3;
+            double previousDistance = input[previous] * x + input[previous + 1] * y + input[previous + 2] * z + constant;
+            for (int vertex = 0; vertex < vertices; vertex++) {
+                int current = vertex * 3;
+                double currentDistance = input[current] * x + input[current + 1] * y + input[current + 2] * z + constant;
+                boolean previousInside = previousDistance >= -EPSILON;
+                boolean currentInside = currentDistance >= -EPSILON;
+                if (previousInside != currentInside) {
+                    double fraction = (previousDistance + EPSILON) / (previousDistance - currentDistance);
+                    int target = nextVertices++ * 3;
+                    for (int axis = 0; axis < 3; axis++) {
+                        output[target + axis] = input[previous + axis] + fraction * (input[current + axis] - input[previous + axis]);
+                    }
+                }
+                if (currentInside) {
+                    System.arraycopy(input, current, output, nextVertices++ * 3, 3);
+                }
+                previous = current;
+                previousDistance = currentDistance;
+            }
+            double[] swap = input;
+            input = output;
+            output = swap;
+            vertices = nextVertices;
+            return vertices > 0;
+        }
+    }
+
     private static final class Window {
         private final ApertureDescriptor geometry;
         private final OpticTransform transform;
@@ -188,7 +299,9 @@ public final class ClientRecursionPlanner {
         private final boolean eyeFrontSide;
         private final Face normal;
         private final PlaneWindow plane;
+        private final ApertureCells aperture;
         private final double[] scratch;
+        private List<Box> faces;
 
         private Window(ApertureDescriptor geometry, OpticTransform transform, List<ApertureDescriptor> reflections, double displayEyeX,
                        double displayEyeY, double displayEyeZ) {
@@ -196,7 +309,7 @@ public final class ClientRecursionPlanner {
             this.transform = transform;
             this.content = transform.inverse();
             this.reflections = reflections;
-            ApertureCells aperture = geometry.aperture();
+            this.aperture = geometry.aperture();
             this.area = aperture.getArea();
             Frame frame = geometry.frame();
             Vec3d center = area.center();
@@ -214,6 +327,13 @@ public final class ClientRecursionPlanner {
             this.normal = projectionFrame.getNormal();
             this.plane = PlaneWindow.create(aperture, area, projectionFrame, originX, originY, originZ,
                 geometry.aperturePadding(), signed(eyeX, eyeY, eyeZ, normal));
+        }
+
+        private List<Box> faces() {
+            if (faces == null) {
+                faces = aperture.getCachedApertureFaces(normal);
+            }
+            return faces;
         }
 
         private boolean servesEye() {

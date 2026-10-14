@@ -78,6 +78,9 @@ public final class Animator {
             throw new IllegalArgumentException("Seek time must not be NaN");
         }
         this.time = ClipTime.clamp(time, timeline.duration());
+        if (state == State.PLAYING) {
+            anchor = source.seconds();
+        }
         pendingStart = true;
         if (state == State.FINISHED) {
             state = State.PAUSED;

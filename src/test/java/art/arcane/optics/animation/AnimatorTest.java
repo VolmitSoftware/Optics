@@ -59,6 +59,44 @@ final class AnimatorTest {
     }
 
     @Test
+    void seekWhilePlayingIgnoresElapsedTimeBeforeTheSeek() {
+        double[] clock = {0.0D};
+        Timeline timeline = Timeline.builder().track(OPEN, Tween.of(0.0D, 10.0D, 10.0D, Easing.LINEAR))
+            .marker("target", 2.0D).marker("later", 3.0D).build();
+        Animator animator = new Animator(timeline, TimeSource.of(() -> clock[0]));
+        List<Marker> fired = new ArrayList<Marker>();
+        animator.play();
+        clock[0] = 5.0D;
+        animator.seek(2.0D);
+        assertEquals(0, animator.advance(fired));
+        assertEquals(2.0D, animator.time(), 0.0D);
+        clock[0] = 5.5D;
+        assertEquals(1, animator.advance(fired));
+        assertEquals(2.5D, animator.time(), 1.0E-12D);
+        assertEquals(List.of("target"), names(fired));
+        clock[0] = 6.0D;
+        assertEquals(1, animator.advance(fired));
+        assertEquals(List.of("target", "later"), names(fired));
+    }
+
+    @Test
+    void backwardsSeekUsesOnlyTimeElapsedAfterTheSeek() {
+        double[] clock = {0.0D};
+        Animator animator = new Animator(Timeline.builder().track(OPEN, Tween.of(0.0D, 10.0D, 10.0D, Easing.LINEAR)).build(),
+            TimeSource.of(() -> clock[0]));
+        animator.speed(-2.0D);
+        animator.play();
+        clock[0] = 4.0D;
+        animator.seek(6.0D);
+        animator.advance(new ArrayList<Marker>());
+        assertEquals(6.0D, animator.time(), 0.0D);
+        assertFalse(animator.finished());
+        clock[0] = 4.5D;
+        animator.advance(new ArrayList<Marker>());
+        assertEquals(5.0D, animator.time(), 1.0E-12D);
+    }
+
+    @Test
     void stopRewindsAndPlayAfterFinishRestarts() {
         double[] clock = {0.0D};
         Animator animator = new Animator(ramp(), TimeSource.of(() -> clock[0]));

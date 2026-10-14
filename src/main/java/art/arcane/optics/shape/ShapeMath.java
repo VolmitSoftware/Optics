@@ -2,6 +2,7 @@ package art.arcane.optics.shape;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.DoubleBinaryOperator;
 
 import art.arcane.optics.internal.shape.MarchingSquares;
 import art.arcane.optics.internal.shape.PolylineDistance;
@@ -147,6 +148,41 @@ final class ShapeMath {
             outlines.add(Outline.of(loop));
         }
         return List.copyOf(outlines);
+    }
+
+    static DoubleBinaryOperator distanceBound(Shape shape) {
+        return switch (shape) {
+            case Transformed transformed -> transformedDistanceBound(transformed);
+            case Union union -> combinedDistanceBound(distanceBound(union.left()), distanceBound(union.right()), false);
+            case Intersection intersection -> combinedDistanceBound(distanceBound(intersection.left()), distanceBound(intersection.right()), true);
+            case Difference difference -> {
+                DoubleBinaryOperator right = distanceBound(difference.right());
+                yield combinedDistanceBound(distanceBound(difference.left()), (u, v) -> -right.applyAsDouble(u, v), true);
+            }
+            case Ellipse ellipse when ellipse.radiusU() != ellipse.radiusV() -> {
+                double radiusU = ellipse.radiusU();
+                double radiusV = ellipse.radiusV();
+                double minimum = Math.min(radiusU, radiusV);
+                yield (u, v) -> (Math.hypot(u / radiusU, v / radiusV) - 1.0D) * minimum;
+            }
+            case Flower ignored -> (u, v) -> 0.0D;
+            case Heart ignored -> (u, v) -> 0.0D;
+            default -> shape::signedDistance;
+        };
+    }
+
+    private static DoubleBinaryOperator transformedDistanceBound(Transformed transformed) {
+        DoubleBinaryOperator inner = distanceBound(transformed.shape());
+        PlaneTransform inverse = transformed.transform().inverse();
+        double minimum = minStretch(transformed.transform());
+        return (u, v) -> inner.applyAsDouble(inverse.a() * u + inverse.b() * v + inverse.tu(),
+            inverse.c() * u + inverse.d() * v + inverse.tv()) * minimum;
+    }
+
+    private static DoubleBinaryOperator combinedDistanceBound(DoubleBinaryOperator left, DoubleBinaryOperator right, boolean intersection) {
+        return intersection
+            ? (u, v) -> Math.max(left.applyAsDouble(u, v), right.applyAsDouble(u, v))
+            : (u, v) -> Math.min(left.applyAsDouble(u, v), right.applyAsDouble(u, v));
     }
 
     static double maxStretch(PlaneTransform transform) {
